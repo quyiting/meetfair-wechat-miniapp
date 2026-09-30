@@ -115,8 +115,13 @@ Page({
     let room = getRoom(this.roomId)
     const cloudCode = (room && room.cloudId) || (SHORT_CODE_PATTERN.test(String(this.roomId || '').toUpperCase()) ? this.roomId : '')
     if (cloudCode && !localOnly) {
+      this.setData({ room: null, point: null, recommendations: [], markers: [] })
       const cloudRoom = await cloudGetRoom(cloudCode)
-      if (cloudRoom) room = cloudRoom
+      if (!cloudRoom) {
+        wx.showToast({ title: '暂无法验证聚会权限，请重试', icon: 'none' })
+        return
+      }
+      room = cloudRoom
     }
     if (room) {
       updateRoom(room)
@@ -124,6 +129,15 @@ Page({
     }
     if (!room) {
       wx.showToast({ title: '聚会不存在或已删除', icon: 'none' })
+      return
+    }
+    if (room.preview) {
+      this.setData({
+        room: Object.assign({}, room, { categoryLabel: CATEGORY_LABELS[room.category] }),
+        point: null, recommendations: [], selectedVenueId: '', markers: [],
+        isMember: false, claimableMembers: [], codePreview: room.cloudId,
+        codeLabel: '聚会码 · 6 位'
+      })
       return
     }
     const { venues, venueSource } = room

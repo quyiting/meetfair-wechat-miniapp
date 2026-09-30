@@ -15,7 +15,7 @@ Page({
     const rooms = getRooms().map((room) => Object.assign({}, room, {
       categoryLabel: CATEGORY_LABELS[room.category],
       transportLabel: TRANSPORT_LABELS[room.transport],
-      memberCount: room.members.length
+      memberCount: room.preview ? room.memberCount : room.members.length
     }))
     this.setData({ rooms })
   },

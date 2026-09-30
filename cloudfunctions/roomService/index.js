@@ -189,9 +189,17 @@ exports.main = async (event) => {
         await Promise.all(Object.values(doc.signals || {}).map((id) => db.collection(SIGNAL_COLLECTION).doc(id).remove().catch(() => {})))
         return { ok: false, message: '聚会已过期' }
       }
+      const viewerMemberId = getViewerMemberId(doc, OPENID)
+      if (!viewerMemberId) {
+        const { id, title, category, dateText } = doc.room
+        return { ok: true, code: doc.code, room: {
+          id, title, category, dateText, transport: 'mixed', cloudId: doc.code, expiresAt,
+          memberCount: doc.room.members.length, members: [], venues: [], preview: true
+        }, viewerMemberId: '', isOwner: false, claimableMemberIds: [], signalId: '' }
+      }
       const room = Object.assign({}, doc.room, { cloudId: doc.code, expiresAt })
       const signalId = await ensureViewerSignal(doc, OPENID)
-      return { ok: true, code: doc.code, room, viewerMemberId: getViewerMemberId(doc, OPENID), isOwner: doc.owner === OPENID,
+      return { ok: true, code: doc.code, room, viewerMemberId, isOwner: doc.owner === OPENID,
         claimableMemberIds: doc.owner === OPENID ? claimableMemberIds(doc) : [], signalId }
     }
 

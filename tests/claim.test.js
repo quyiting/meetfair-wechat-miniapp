@@ -56,10 +56,24 @@ async function run() {
   assert.strictEqual(signals[created.signalId].openid, 'owner')
 
   openid = 'stranger'
+  const preview = await roomService.main({ action: 'get', code })
+  assert.strictEqual(preview.ok, true)
+  assert.strictEqual(preview.room.preview, true)
+  assert.strictEqual(preview.room.title, '聚会')
+  assert.strictEqual(preview.room.memberCount, 2)
+  assert.strictEqual(preview.viewerMemberId, '')
+  assert.strictEqual(preview.signalId, '')
+  assert(!JSON.stringify(preview).includes('latitude'), '未加入者不能读取成员坐标')
+  assert(!JSON.stringify(preview).includes('guest-seat'), '未加入者不能读取成员标识')
+  assert(!JSON.stringify(preview).includes('venue-1'), '未加入者不能读取推荐地点')
+
   const denied = await roomService.main({ action: 'issueClaimCode', code, memberId: 'guest-seat' })
   assert.strictEqual(denied.ok, false)
 
   openid = 'owner'
+  const ownerView = await roomService.main({ action: 'get', code })
+  assert.strictEqual(ownerView.room.members[0].latitude, 31)
+  assert.strictEqual(ownerView.room.preview, undefined)
   const issued = await roomService.main({ action: 'issueClaimCode', code, memberId: 'guest-seat' })
   assert.match(issued.claimCode, /^[A-F0-9]{16}$/)
   assert(!JSON.stringify(docs).includes(issued.claimCode), '云端不能保存明文认领码')
@@ -76,6 +90,8 @@ async function run() {
   assert.strictEqual(joined.ok, true)
   assert.strictEqual(joined.viewerMemberId, 'guest-seat')
   assert.strictEqual(signals[joined.signalId].openid, 'invitee')
+  const joinedView = await roomService.main({ action: 'get', code })
+  assert.strictEqual(joinedView.room.members[0].longitude, 121)
   const previousVersion = signals[created.signalId].version
   const voted = await roomService.main({ action: 'toggleVote', code, venueId: 'venue-1' })
   assert.strictEqual(voted.ok, true)
@@ -85,6 +101,9 @@ async function run() {
   assert(!docs[0].room.members.some((item) => item.id === 'guest-seat'))
   assert.deepStrictEqual(docs[0].room.votes['venue-1'], [])
   assert.strictEqual(signals[joined.signalId], undefined)
+  const afterLeave = await roomService.main({ action: 'get', code })
+  assert.strictEqual(afterLeave.room.preview, true)
+  assert(!JSON.stringify(afterLeave).includes('latitude'))
 
   openid = 'another'
   const replay = await roomService.main({ action: 'join', code, claimCode: issued.claimCode, member: member('', '小李') })

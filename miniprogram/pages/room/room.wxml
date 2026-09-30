@@ -9,14 +9,24 @@
   </view>
   <view class="code-copy-btn">复制</view>
 </view></view>
-      <view class="room-time">{{room.dateText}} · {{room.members.length}} 人参与</view>
-      <view class="avatar-strip"><view wx:for="{{room.members}}" wx:key="id" class="member-avatar" style="background: {{item.color}}">{{item.shortName}}</view><view wx:if="{{!isMember}}" class="add-avatar join-avatar" bindtap="openJoinModal">＋</view></view>
-      <view wx:if="{{!isMember}}" class="join-hint">你还没加入，点击头像加入聚会</view>
-      <view wx:else class="joined-hint">位置已收集</view>
+      <view class="room-time">{{room.dateText}} · {{room.preview ? room.memberCount : room.members.length}} 人参与</view>
+      <block wx:if="{{!room.preview}}">
+        <view class="avatar-strip"><view wx:for="{{room.members}}" wx:key="id" class="member-avatar" style="background: {{item.color}}">{{item.shortName}}</view><view wx:if="{{!isMember}}" class="add-avatar join-avatar" bindtap="openJoinModal">＋</view></view>
+        <view wx:if="{{!isMember}}" class="join-hint">你还没加入，点击头像加入聚会</view>
+        <view wx:else class="joined-hint">位置已收集</view>
+      </block>
     </view>
   </view>
 
   <view class="page-shell result-shell">
+    <block wx:if="{{room.preview}}">
+      <view class="empty-card card">
+        <view class="empty-title">加入后查看完整推荐</view>
+        <view class="empty-copy">成员位置、地图和推荐地点仅向已加入的成员展示。</view>
+        <button class="empty-action" bindtap="openJoinModal">填写我的出发位置并加入</button>
+      </view>
+    </block>
+    <block wx:else>
     <view class="fairness-card card">
       <view class="fairness-icon">⌘</view>
       <view class="fairness-text"><view class="fairness-title">选择这次聚会的推荐目标</view><view class="fairness-copy">{{goalDescription}}。下拉页面可同步朋友的加入和投票。</view></view>
@@ -56,6 +66,7 @@
     </view>
     <button wx:if="{{room.currentUserIsOwner}}" class="delete-room-button" bindtap="deleteCurrentRoom">删除本次聚会及位置数据</button>
     <button wx:if="{{isMember && !room.currentUserIsOwner}}" class="delete-room-button" bindtap="leaveCurrentRoom">退出聚会并删除我的位置</button>
+    </block>
   </view>
 
   <view wx:if="{{showJoinModal}}" class="modal-mask" bindtap="closeJoinModal">
