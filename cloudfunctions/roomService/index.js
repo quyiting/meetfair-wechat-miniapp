@@ -5,6 +5,7 @@ cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
 
 const db = cloud.database()
 const COLLECTION = 'rooms'
+const SIGNAL_COLLECTION = 'roomSignals'
 
 // 去掉易混淆字符（0/O、1/I/L、J），便于口头传达和手动输入
 const CODE_CHARS = '23456789ABCDEFGHKMNPQRSTUVWXYZ'
@@ -69,21 +70,51 @@ function getViewerMemberId(doc, openid) {
   return ''
 }
 
-async function ensureCollection() {
+async function ensureCollection(name) {
   try {
-    await db.createCollection(COLLECTION)
+    await db.createCollection(name)
   } catch (e) {
     // 已存在时忽略；下面 add 若仍失败会返回真实错误
   }
 }
 
+async function publishSignals(signals) {
+  const version = crypto.randomBytes(8).toString('hex')
+  await Promise.all(Object.keys(signals || {}).map(async (openid) => {
+    try {
+      await db.collection(SIGNAL_COLLECTION).doc(signals[openid]).set({ data: { openid, version } })
+    } catch (error) {
+      console.warn('[roomService] 实时通知失败:', error.message)
+    }
+  }))
+}
+
+async function ensureViewerSignal(doc, openid) {
+  if (!getViewerMemberId(doc, openid)) return ''
+  if (doc.signals && doc.signals[openid]) return doc.signals[openid]
+  await ensureCollection(SIGNAL_COLLECTION)
+  const signalId = await db.runTransaction(async (transaction) => {
+    const current = (await transaction.collection(COLLECTION).doc(doc._id).get()).data
+    if (!current || !getViewerMemberId(current, openid)) return ''
+    if (current.signals && current.signals[openid]) return current.signals[openid]
+    const id = crypto.randomBytes(16).toString('hex')
+    const signals = Object.assign({}, current.signals || {}, { [openid]: id })
+    await transaction.collection(COLLECTION).doc(doc._id).update({ data: { signals } })
+    return id
+  })
+  if (signalId) await publishSignals({ [openid]: signalId })
+  return signalId
+}
+
 async function createRoom(room, openid) {
-  await ensureCollection()
+  await ensureCollection(COLLECTION)
+  await ensureCollection(SIGNAL_COLLECTION)
   for (let attempt = 0; attempt < 5; attempt++) {
     const code = generateCode()
     const existing = await db.collection(COLLECTION).where({ code }).count()
     if (existing.total > 0) continue
     const ownerMemberId = room.members[0].id || generateMemberId()
+    const signalId = crypto.randomBytes(16).toString('hex')
     const savedRoom = {
       id: String(room.id).slice(0, 80),
       title: String(room.title).trim().slice(0, 18),
@@ -106,12 +137,14 @@ async function createRoom(room, openid) {
         room: savedRoom,
         owner: openid,
         memberBindings: [{ memberId: ownerMemberId, openid }],
+        signals: { [openid]: signalId },
         createdAt: Date.now(),
         updatedAt: Date.now(),
         expiresAt: Date.now() + ROOM_TTL_MS
       }
     })
-    return { code, room: savedRoom, viewerMemberId: ownerMemberId,
+    await publishSignals({ [openid]: signalId })
+    return { code, room: savedRoom, viewerMemberId: ownerMemberId, signalId,
       claimableMemberIds: savedRoom.members.slice(1).map((member) => member.id) }
   }
   throw new Error('聚会码生成失败，请稍后重试')
@@ -145,11 +178,13 @@ exports.main = async (event) => {
       const expiresAt = doc.expiresAt || ((doc.createdAt || Date.now()) + ROOM_TTL_MS)
       if (expiresAt < Date.now()) {
         await db.collection(COLLECTION).doc(doc._id).remove()
+        await Promise.all(Object.values(doc.signals || {}).map((id) => db.collection(SIGNAL_COLLECTION).doc(id).remove().catch(() => {})))
         return { ok: false, message: '聚会已过期' }
       }
       const room = Object.assign({}, doc.room, { cloudId: doc.code })
+      const signalId = await ensureViewerSignal(doc, OPENID)
       return { ok: true, code: doc.code, room, viewerMemberId: getViewerMemberId(doc, OPENID), isOwner: doc.owner === OPENID,
-        claimableMemberIds: doc.owner === OPENID ? claimableMemberIds(doc) : [] }
+        claimableMemberIds: doc.owner === OPENID ? claimableMemberIds(doc) : [], signalId }
     }
 
     if (action === 'issueClaimCode') {
@@ -204,12 +239,16 @@ exports.main = async (event) => {
         })
         const memberBindings = (current.memberBindings || []).concat({ memberId, openid: OPENID })
         const claimCodes = Object.assign({}, current.claimCodes || {})
+        const signalId = crypto.randomBytes(16).toString('hex')
+        const signals = Object.assign({}, current.signals || {}, { [OPENID]: signalId })
         if (claimableMember) delete claimCodes[memberId]
-        await transaction.collection(COLLECTION).doc(doc._id).update({ data: { room, memberBindings, claimCodes, updatedAt: Date.now() } })
-        return { room, memberId, doc: Object.assign({}, current, { room, memberBindings }) }
+        await transaction.collection(COLLECTION).doc(doc._id).update({ data: { room, memberBindings, claimCodes, signals, updatedAt: Date.now() } })
+        return { room, memberId, doc: Object.assign({}, current, { room, memberBindings, signals }) }
       })
+      const signalId = await ensureViewerSignal(joined.doc, OPENID)
+      await publishSignals(joined.doc.signals)
       return { ok: true, code, room: joined.room, viewerMemberId: joined.memberId, isOwner: doc.owner === OPENID,
-        claimableMemberIds: doc.owner === OPENID ? claimableMemberIds(joined.doc) : [] }
+        claimableMemberIds: doc.owner === OPENID ? claimableMemberIds(joined.doc) : [], signalId }
     }
 
     if (action === 'toggleVote') {
@@ -227,7 +266,8 @@ exports.main = async (event) => {
         : currentVotes.concat(memberId)
       const room = Object.assign({}, doc.room, { cloudId: code, votes })
       await db.collection(COLLECTION).doc(doc._id).update({ data: { room, updatedAt: Date.now() } })
-      return { ok: true, code, room, viewerMemberId: memberId, isOwner: doc.owner === OPENID }
+      await publishSignals(doc.signals)
+      return { ok: true, code, room, viewerMemberId: memberId, isOwner: doc.owner === OPENID, signalId: (doc.signals || {})[OPENID] || '' }
     }
 
     if (action === 'setVenues') {
@@ -244,7 +284,8 @@ exports.main = async (event) => {
         venueSearchAt: Date.now()
       })
       await db.collection(COLLECTION).doc(doc._id).update({ data: { room, updatedAt: Date.now() } })
-      return { ok: true, code, room, viewerMemberId: getViewerMemberId(doc, OPENID), isOwner: doc.owner === OPENID }
+      await publishSignals(doc.signals)
+      return { ok: true, code, room, viewerMemberId: getViewerMemberId(doc, OPENID), isOwner: doc.owner === OPENID, signalId: (doc.signals || {})[OPENID] || '' }
     }
 
     if (action === 'delete') {
@@ -253,6 +294,7 @@ exports.main = async (event) => {
       if (!doc) return { ok: false, message: '聚会不存在' }
       if (doc.owner !== OPENID) return { ok: false, message: '只有创建者可以删除聚会' }
       await db.collection(COLLECTION).doc(doc._id).remove()
+      await Promise.all(Object.values(doc.signals || {}).map((id) => db.collection(SIGNAL_COLLECTION).doc(id).remove().catch(() => {})))
       return { ok: true }
     }
 

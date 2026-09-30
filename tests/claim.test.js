@@ -3,6 +3,15 @@ const Module = require('module')
 
 let openid = 'owner'
 const docs = []
+const signals = {}
+const signalCollection = {
+  doc(id) {
+    return {
+      async set({ data }) { signals[id] = data },
+      async remove() { delete signals[id] }
+    }
+  }
+}
 const collection = {
   where(query) {
     return {
@@ -20,7 +29,7 @@ const collection = {
   }
 }
 const db = {
-  collection() { return collection },
+  collection(name) { return name === 'roomSignals' ? signalCollection : collection },
   async createCollection() {},
   async runTransaction(callback) { return callback({ collection: () => collection }) }
 }
@@ -37,12 +46,13 @@ const roomService = require('../cloudfunctions/roomService')
 Module._load = originalLoad
 
 const member = (id, name) => ({ id, name, latitude: 31, longitude: 121, transport: 'transit' })
-const room = { id: 'room-1', title: '聚会', category: 'food', members: [member('owner-seat', '你'), member('guest-seat', '小李')], venues: [] }
+const room = { id: 'room-1', title: '聚会', category: 'food', members: [member('owner-seat', '你'), member('guest-seat', '小李')], venues: [{ id: 'venue-1' }] }
 
 async function run() {
   const created = await roomService.main({ action: 'create', room })
   assert.strictEqual(created.ok, true)
   const code = created.code
+  assert.strictEqual(signals[created.signalId].openid, 'owner')
 
   openid = 'stranger'
   const denied = await roomService.main({ action: 'issueClaimCode', code, memberId: 'guest-seat' })
@@ -64,6 +74,11 @@ async function run() {
   const joined = await roomService.main({ action: 'join', code, claimCode: issued.claimCode, member: member('', '小李') })
   assert.strictEqual(joined.ok, true)
   assert.strictEqual(joined.viewerMemberId, 'guest-seat')
+  assert.strictEqual(signals[joined.signalId].openid, 'invitee')
+  const previousVersion = signals[created.signalId].version
+  const voted = await roomService.main({ action: 'toggleVote', code, venueId: 'venue-1' })
+  assert.strictEqual(voted.ok, true)
+  assert.notStrictEqual(signals[created.signalId].version, previousVersion)
 
   openid = 'another'
   const replay = await roomService.main({ action: 'join', code, claimCode: issued.claimCode, member: member('', '小李') })

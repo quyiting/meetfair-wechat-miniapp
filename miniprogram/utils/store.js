@@ -73,7 +73,8 @@ function cloudCreateRoom(room) {
       cloudId: result.code,
       currentMemberId: result.viewerMemberId || room.members[0].id,
       currentUserIsOwner: result.isOwner !== false,
-      claimableMemberIds: result.claimableMemberIds || []
+      claimableMemberIds: result.claimableMemberIds || [],
+      signalId: result.signalId || ''
     })
     updateRoom(room)
     console.log('[cloudCreateRoom] 成功，短码:', result.code)
@@ -91,7 +92,8 @@ function cloudGetRoom(code) {
       cloudId: result.code,
       currentMemberId: result.viewerMemberId || '',
       currentUserIsOwner: Boolean(result.isOwner),
-      claimableMemberIds: result.claimableMemberIds || []
+      claimableMemberIds: result.claimableMemberIds || [],
+      signalId: result.signalId || ''
     })
   }).catch((err) => {
     console.warn('[cloudGetRoom] 失败:', err.message)
@@ -110,7 +112,8 @@ function addMemberToRoom(roomId, member, claimCode) {
         cloudId: result.code,
         currentMemberId: result.viewerMemberId || '',
         currentUserIsOwner: Boolean(result.isOwner),
-        claimableMemberIds: result.claimableMemberIds || []
+        claimableMemberIds: result.claimableMemberIds || [],
+        signalId: result.signalId || ''
       })
       updateRoom(syncedRoom)
       return syncedRoom
@@ -138,7 +141,8 @@ function cloudToggleVote(room, venueId) {
       cloudId: result.code,
       currentMemberId: result.viewerMemberId || '',
       currentUserIsOwner: Boolean(result.isOwner),
-      claimableMemberIds: room.claimableMemberIds || []
+      claimableMemberIds: room.claimableMemberIds || [],
+      signalId: result.signalId || room.signalId || ''
     })
     updateRoom(syncedRoom)
     return syncedRoom
@@ -152,7 +156,8 @@ function cloudSetVenues(room, venues, venueSource, routeMatrix) {
       cloudId: result.code,
       currentMemberId: result.viewerMemberId || room.currentMemberId || '',
       currentUserIsOwner: Boolean(result.isOwner),
-      claimableMemberIds: room.claimableMemberIds || []
+      claimableMemberIds: room.claimableMemberIds || [],
+      signalId: result.signalId || room.signalId || ''
     })
     updateRoom(syncedRoom)
     return syncedRoom

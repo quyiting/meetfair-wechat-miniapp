@@ -54,7 +54,54 @@ Page({
     this.roomId = options.id
   },
   onShow() {
-    if (this.roomId) this.loadRoom()
+    this.pageVisible = true
+    if (this.roomId) this.loadRoom().then(() => this.startWatch())
+  },
+  onHide() {
+    this.pageVisible = false
+    this.closeWatch()
+  },
+  onUnload() {
+    this.pageVisible = false
+    this.closeWatch()
+  },
+  closeWatch() {
+    if (this.roomWatcher) this.roomWatcher.close()
+    this.roomWatcher = null
+    this.watchedSignalId = ''
+    this.lastSignalVersion = ''
+  },
+  startWatch() {
+    const room = getRoom(this.roomId)
+    if (!this.pageVisible || !room || !room.signalId || !wx.cloud || !wx.cloud.database) return
+    if (this.watchedSignalId === room.signalId) return
+    this.closeWatch()
+    this.watchedSignalId = room.signalId
+    try {
+      this.roomWatcher = wx.cloud.database().collection('roomSignals').where({ _id: room.signalId }).watch({
+        onChange: (snapshot) => {
+          const signal = snapshot.docs && snapshot.docs[0]
+          if (!signal) {
+            if (this.lastSignalVersion) {
+              this.closeWatch()
+              wx.showToast({ title: '聚会已删除', icon: 'none' })
+              wx.reLaunch({ url: '/pages/index/index' })
+            }
+            return
+          }
+          if (signal.version === this.lastSignalVersion) return
+          this.lastSignalVersion = signal.version
+          this.loadRoom()
+        },
+        onError: (error) => {
+          console.warn('[room] 实时同步不可用:', error)
+          this.closeWatch()
+        }
+      })
+    } catch (error) {
+      console.warn('[room] 实时同步不可用:', error)
+      this.closeWatch()
+    }
   },
   onPullDownRefresh() {
     Promise.resolve(this.loadRoom()).then(
@@ -292,7 +339,7 @@ Page({
     addMemberToRoom(this.roomId, member, this.data.joinClaimCode).then(() => {
       this.setData({ joinSubmitting: false })
       this.closeJoinModal()
-      this.loadRoom(true)
+      this.loadRoom(true).then(() => this.startWatch())
       wx.showToast({ title: '已成功加入聚会', icon: 'success' })
     }).catch((error) => {
       this.setData({ joinSubmitting: false })
