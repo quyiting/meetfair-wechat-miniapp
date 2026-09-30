@@ -2,6 +2,6 @@
   "name": "meetfair-miniprogram",
   "private": true,
   "scripts": {
-    "test": "node tests/recommend.test.js && node tests/store.test.js && node tests/claim.test.js && node tests/meeting-time.test.js && node tests/privacy.test.js && node tests/room-preview.test.js && node tests/room-concurrency.test.js"
+    "test": "node tests/recommend.test.js && node tests/store.test.js && node tests/claim.test.js && node tests/meeting-time.test.js && node tests/privacy.test.js && node tests/room-preview.test.js && node tests/room-concurrency.test.js && node tests/cleanup-rooms.test.js"
   }
 }

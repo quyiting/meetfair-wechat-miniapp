@@ -185,8 +185,8 @@ exports.main = async (event) => {
       }
       const expiresAt = doc.expiresAt || ((doc.createdAt || Date.now()) + ROOM_TTL_MS)
       if (expiresAt < Date.now()) {
+        await Promise.all(Object.values(doc.signals || {}).map((id) => db.collection(SIGNAL_COLLECTION).doc(id).remove()))
         await db.collection(COLLECTION).doc(doc._id).remove()
-        await Promise.all(Object.values(doc.signals || {}).map((id) => db.collection(SIGNAL_COLLECTION).doc(id).remove().catch(() => {})))
         return { ok: false, message: '聚会已过期' }
       }
       const viewerMemberId = getViewerMemberId(doc, OPENID)

@@ -4,11 +4,15 @@ const Module = require('module')
 let openid = 'owner'
 const docs = []
 const signals = {}
+let failSignalRemoval = ''
 const signalCollection = {
   doc(id) {
     return {
       async set({ data }) { signals[id] = data },
-      async remove() { delete signals[id] }
+      async remove() {
+        if (id === failSignalRemoval) throw new Error('signal removal failed')
+        delete signals[id]
+      }
     }
   }
 }
@@ -20,11 +24,15 @@ const collection = {
       async count() { return { total: docs.filter((doc) => doc.code === query.code).length } }
     }
   },
-  async add({ data }) { docs.push(Object.assign({ _id: 'doc-1' }, data)) },
+  async add({ data }) { docs.push(Object.assign({ _id: 'doc-' + (docs.length + 1) }, data)) },
   doc(id) {
     return {
       async get() { return { data: docs.find((doc) => doc._id === id) } },
-      async update({ data }) { Object.assign(docs.find((doc) => doc._id === id), data) }
+      async update({ data }) { Object.assign(docs.find((doc) => doc._id === id), data) },
+      async remove() {
+        const index = docs.findIndex((doc) => doc._id === id)
+        if (index >= 0) docs.splice(index, 1)
+      }
     }
   }
 }
@@ -117,6 +125,16 @@ async function run() {
   assert(shortLived.room.expiresAt > Date.now() + 3500000 && shortLived.room.expiresAt < Date.now() + 3700000)
   assert.strictEqual(shortLived.room.members[0].latitude, 31.23)
   assert.strictEqual(shortLived.room.members[0].locationName, '大致位置（约 1 公里精度）')
+  const expiringDoc = docs.find((doc) => doc.code === shortLived.code)
+  expiringDoc.expiresAt = Date.now() - 1
+  failSignalRemoval = shortLived.signalId
+  await roomService.main({ action: 'get', code: shortLived.code })
+  assert(docs.includes(expiringDoc), '通知删除失败时读取清理也应保留房间，供下次重试')
+  failSignalRemoval = ''
+  const expired = await roomService.main({ action: 'get', code: shortLived.code })
+  assert.strictEqual(expired.message, '聚会已过期')
+  assert(!docs.includes(expiringDoc))
+  assert.strictEqual(signals[shortLived.signalId], undefined)
   console.log('claim tests: ok')
 }
 
