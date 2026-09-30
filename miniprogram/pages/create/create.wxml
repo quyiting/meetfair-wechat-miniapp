@@ -1,0 +1,63 @@
+<view class="page-shell create-page">
+  <view class="eyebrow">LOCAL GROUP MODE</view>
+  <view class="page-title">这次，大家想怎么聚？</view>
+  <view class="page-copy">在这台设备添加每个人的出发点，聚点会按个人交通方式和预算推荐。</view>
+
+  <view class="form-block">
+    <view class="field-label">聚会名称</view>
+    <input class="title-input" value="{{title}}" maxlength="18" bindinput="setTitle" placeholder="例如：周五晚饭局"/>
+  </view>
+
+  <view class="form-block">
+    <view class="field-label">想做什么</view>
+    <view class="category-grid">
+      <view wx:for="{{categories}}" wx:key="id" class="category-item {{activeCategory === item.id ? 'category-active' : ''}}" bindtap="selectCategory" data-id="{{item.id}}">
+        <text class="category-icon">{{item.icon}}</text><text>{{item.label}}</text>
+      </view>
+    </view>
+  </view>
+
+  <view class="form-block">
+    <view class="field-label">聚会时间</view>
+    <view class="meeting-time-row">
+      <picker mode="date" value="{{meetingDate}}" start="{{minDate}}" bindchange="selectMeetingDate">
+        <view class="meeting-time-picker">{{meetingDate}}</view>
+      </picker>
+      <picker mode="time" value="{{meetingTime}}" bindchange="selectMeetingTime">
+        <view class="meeting-time-picker">{{meetingTime}}</view>
+      </picker>
+    </view>
+  </view>
+
+  <view class="member-section">
+    <view class="member-section-head"><view><view class="field-label section-label">本地成员</view><view class="member-section-copy">至少 2 人，最多 8 人</view></view><view class="member-count">{{members.length}} / 8</view></view>
+
+    <view wx:for="{{members}}" wx:key="id" class="member-form card">
+      <view class="member-form-head">
+        <view class="member-kind"><view class="member-dot" style="background: {{item.color}}"></view><text>{{index === 0 ? '我' : '朋友 ' + (index + 1)}}</text></view>
+        <button wx:if="{{index > 0}}" class="remove-member" bindtap="removeMember" data-index="{{index}}">移除</button>
+      </view>
+      <input class="member-name-input" value="{{item.name}}" maxlength="8" bindinput="updateMemberName" data-index="{{index}}" placeholder="输入名字"/>
+      <view class="member-location" bindtap="chooseMemberLocation" data-index="{{index}}">
+        <text class="location-pin">⌖</text><text class="member-location-text {{item.locationName ? '' : 'location-placeholder'}}">{{item.locationName || '在地图选择出发位置'}}</text><text class="choose-location">选择</text>
+      </view>
+      <view wx:if="{{index === 0}}" class="current-location-link" bindtap="locateMe">⌖ 使用本机当前位置</view>
+      <view class="member-option-label">出行方式</view>
+      <view class="member-transport-row">
+        <view class="member-transport {{item.transport === 'walking' ? 'member-transport-active' : ''}}" bindtap="selectMemberTransport" data-index="{{index}}" data-transport="walking">步行</view>
+        <view class="member-transport {{item.transport === 'bicycle' ? 'member-transport-active' : ''}}" bindtap="selectMemberTransport" data-index="{{index}}" data-transport="bicycle">骑行</view>
+        <view class="member-transport {{item.transport === 'transit' ? 'member-transport-active' : ''}}" bindtap="selectMemberTransport" data-index="{{index}}" data-transport="transit">公交地铁</view>
+        <view class="member-transport {{item.transport === 'driving' ? 'member-transport-active' : ''}}" bindtap="selectMemberTransport" data-index="{{index}}" data-transport="driving">驾车</view>
+      </view>
+      <view class="member-option-label">人均预算</view>
+      <view class="budget-row">
+        <view wx:for="{{budgets}}" wx:for-item="budgetItem" wx:key="value" wx:for-index="budgetIndex" class="budget-chip {{item.budget === budgetItem.value ? 'budget-active' : ''}}" bindtap="selectMemberBudget" data-index="{{index}}" data-budget="{{budgetItem.value}}">{{budgetItem.label}}</view>
+      </view>
+    </view>
+
+    <button class="add-member" bindtap="addMember">＋ 添加一位朋友</button>
+  </view>
+
+  <view class="prototype-tip"><text>{{searchSource.title}}</text>{{searchSource.detail}} 创建后，成员位置会随聚会保存到云端，默认 30 天后过期。</view>
+  <button class="primary-button create-button" disabled="{{creating}}" bindtap="createRoom">{{creating ? '正在生成推荐…' : '为 ' + members.length + ' 人生成推荐'}}</button>
+</view>

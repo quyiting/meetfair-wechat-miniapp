@@ -1,0 +1,96 @@
+<view wx:if="{{room}}" class="room-page">
+  <view class="room-hero">
+    <view class="page-shell room-hero-inner">
+      <view class="room-topline"><view><view class="eyebrow room-eyebrow">{{room.categoryLabel}} · {{room.transportLabel}}</view><view class="room-name">{{room.title}}</view></view><view class="room-code-wrap" bindtap="copyRoomCode">
+  <view class="code-icon">#</view>
+  <view class="code-center">
+    <view class="code-label">{{codeLabel}}</view>
+    <view class="code-preview">{{codePreview || '点击复制'}}</view>
+  </view>
+  <view class="code-copy-btn">复制</view>
+</view></view>
+      <view class="room-time">{{room.dateText}} · {{room.members.length}} 人参与</view>
+      <view class="avatar-strip"><view wx:for="{{room.members}}" wx:key="id" class="member-avatar" style="background: {{item.color}}">{{item.shortName}}</view><view wx:if="{{!isMember}}" class="add-avatar join-avatar" bindtap="openJoinModal">＋</view></view>
+      <view wx:if="{{!isMember}}" class="join-hint">你还没加入，点击头像加入聚会</view>
+      <view wx:else class="joined-hint">位置已收集</view>
+    </view>
+  </view>
+
+  <view class="page-shell result-shell">
+    <view class="fairness-card card">
+      <view class="fairness-icon">⌘</view>
+      <view class="fairness-text"><view class="fairness-title">已经找到相对公平的区域</view><view class="fairness-copy">优先压低最远成员的通勤时间，再结合平均路程排序。下拉页面可同步朋友的加入和投票。</view></view>
+    </view>
+
+    <map class="meeting-map" latitude="{{point.latitude}}" longitude="{{point.longitude}}" scale="13" markers="{{markers}}" show-location="false"></map>
+    <view class="map-caption"><text>●</text> 橙色为朋友出发点，蓝色为当前推荐地点</view>
+
+    <view class="category-tabs"><view wx:for="{{categories}}" wx:key="id" class="category-tab {{activeCategory === item.id ? 'tab-active' : ''}}" bindtap="selectCategory" data-id="{{item.id}}">{{item.label}}</view></view>
+    <view class="list-heading"><view><view class="section-title">推荐地点</view><view class="section-subtitle">{{room.venueSourceLabel}}</view></view><button class="search-nearby" bindtap="refreshNearby">更新附近</button></view>
+
+    <view wx:if="{{recommendations.length}}" class="venue-list">
+      <view wx:for="{{recommendations}}" wx:key="id" class="venue-card card {{selectedVenueId === item.id ? 'venue-selected' : ''}}" bindtap="selectVenue" data-id="{{item.id}}">
+        <view class="venue-rank">{{index + 1}}</view>
+        <view class="venue-main" bindtap="openPlace" data-id="{{item.id}}">
+          <view class="venue-title-row"><view class="venue-name">{{item.name}}</view><view class="fairness-tag">{{item.fairness}}</view></view>
+          <view class="venue-info">{{item.metaText}}</view>
+          <view class="venue-note">{{item.highlight}}</view>
+          <view wx:if="{{item.budgetStatus}}" class="budget-fit">{{item.budgetStatus}}</view>
+          <view class="travel-summary">最远 <text>{{item.maxMinutes}} 分钟</text>　平均 {{item.averageMinutes}} 分钟 · {{item.routeStatus}}</view>
+        </view>
+        <button class="vote-button {{item.hasVoted ? 'voted' : ''}}" catchtap="toggleVote" data-id="{{item.id}}">♥ {{item.voteCount}}</button>
+      </view>
+    </view>
+    <view wx:else class="empty-card card">
+      <view class="empty-icon">⌕</view>
+      <view class="empty-title">这里暂时没有匹配地点</view>
+      <view class="empty-copy">试试切换活动类型，或重新搜索折中区域附近的地点。</view>
+      <button class="empty-action" bindtap="refreshNearby">重新搜索附近</button>
+    </view>
+    <button wx:if="{{room.currentUserIsOwner}}" class="delete-room-button" bindtap="deleteCurrentRoom">删除本次聚会及位置数据</button>
+  </view>
+
+  <view wx:if="{{showJoinModal}}" class="modal-mask" bindtap="closeJoinModal">
+    <view class="modal-dialog" catchtap="">
+      <view class="modal-header">
+        <view class="modal-title">加入聚会</view>
+        <view class="modal-close" bindtap="closeJoinModal">×</view>
+      </view>
+      <view class="modal-body">
+        <view class="form-group">
+          <view class="form-label">你的名字</view>
+          <input class="form-input" placeholder="输入名字，最多8个字" value="{{joinName}}" bindinput="setJoinName" />
+          <view class="form-hint">创建者已经添加过你时，请填写相同名字以认领自己的位置。</view>
+        </view>
+        <view class="form-group">
+          <view class="form-label">出发位置</view>
+          <view class="location-picker">
+            <view class="location-value">{{joinLocationName || '请选择位置'}}</view>
+            <view class="location-actions">
+              <button class="action-btn" bindtap="locateJoinMe">📍 获取定位</button>
+              <button class="action-btn" bindtap="chooseJoinLocation">🗺️ 地图选点</button>
+            </view>
+          </view>
+        </view>
+        <view class="form-group">
+          <view class="form-label">出行方式</view>
+          <view class="option-group">
+            <view class="option-item {{joinTransport === 'walking' ? 'option-active' : ''}}" bindtap="selectJoinTransport" data-transport="walking">🚶 步行</view>
+            <view class="option-item {{joinTransport === 'bicycle' ? 'option-active' : ''}}" bindtap="selectJoinTransport" data-transport="bicycle">🚲 骑行</view>
+            <view class="option-item {{joinTransport === 'transit' ? 'option-active' : ''}}" bindtap="selectJoinTransport" data-transport="transit">🚇 地铁</view>
+            <view class="option-item {{joinTransport === 'driving' ? 'option-active' : ''}}" bindtap="selectJoinTransport" data-transport="driving">🚗 自驾</view>
+          </view>
+        </view>
+        <view class="form-group">
+          <view class="form-label">预算</view>
+          <view class="option-group">
+            <view wx:for="{{budgets}}" wx:key="value" class="option-item {{joinBudget === item.value ? 'option-active' : ''}}" bindtap="selectJoinBudget" data-budget="{{item.value}}">{{item.label}}</view>
+          </view>
+        </view>
+      </view>
+      <view class="modal-footer">
+        <button class="modal-submit" disabled="{{joinSubmitting}}" bindtap="submitJoin">{{joinSubmitting ? '正在加入…' : '确认加入'}}</button>
+      </view>
+    </view>
+  </view>
+</view>

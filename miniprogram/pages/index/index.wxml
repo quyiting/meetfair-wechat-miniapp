@@ -1,0 +1,58 @@
+<view class="page-shell home-page">
+  <view class="topbar">
+    <view class="brand"><view class="brand-dot"></view><text>聚点</text></view>
+    <view class="brand-note">让见面更公平</view>
+  </view>
+
+  <view class="hero card">
+    <view class="hero-orbit orbit-one"></view>
+    <view class="hero-orbit orbit-two"></view>
+    <view class="eyebrow hero-eyebrow">MEET FAIRLY</view>
+    <view class="hero-title">别再纠结<br/>"到底去哪儿见"</view>
+    <view class="hero-copy">每个人报一个出发点，聚点帮你找到大家都不太远的好去处。</view>
+    <button class="primary-button hero-button" bindtap="goCreate">发起一次聚会</button>
+    <button class="join-code-button" bindtap="openJoinCodeModal">通过聚会码加入</button>
+  </view>
+
+  <view class="steps">
+    <view class="step"><text class="step-number">01</text><text>朋友提交位置</text></view>
+    <view class="step-line"></view>
+    <view class="step"><text class="step-number">02</text><text>计算公平路线</text></view>
+    <view class="step-line"></view>
+    <view class="step"><text class="step-number">03</text><text>投票定地点</text></view>
+  </view>
+
+  <view wx:if="{{rooms.length}}" class="my-section">
+    <view class="section-title">我的聚会</view>
+    <view class="room-list">
+      <view class="room-card card" wx:for="{{rooms}}" wx:key="id" bindtap="openRoom" data-id="{{item.id}}">
+        <view class="room-card-head"><view><view class="room-title">{{item.title}}</view><view class="room-meta">{{item.categoryLabel}} · {{item.transportLabel}}</view></view><view class="room-arrow">›</view></view>
+        <view class="member-row"><view class="mini-avatars"><text class="mini-avatar" wx:for="{{item.members}}" wx:key="id" style="background: {{item.color}}">{{item.shortName}}</text></view><text>{{item.memberCount}} 人已加入</text></view>
+      </view>
+    </view>
+  </view>
+
+  <view class="privacy-note">位置仅在你主动提交后用于本次聚会；云端聚会默认保留 30 天，创建者可提前删除。</view>
+
+  <view wx:if="{{showJoinCodeModal}}" class="modal-mask" bindtap="closeJoinCodeModal">
+    <view class="modal-dialog" catchtap="noop">
+      <view class="modal-header">
+        <view class="modal-title">通过聚会码加入</view>
+        <view class="modal-close" bindtap="closeJoinCodeModal">×</view>
+      </view>
+      <view class="modal-body">
+        <view class="form-group">
+          <view class="form-label-row">
+            <view class="form-label">聚会码</view>
+            <view class="form-paste" bindtap="pasteJoinCode">粘贴</view>
+          </view>
+          <input class="form-input" value="{{joinCode}}" maxlength="5000" placeholder="输入 6 位聚会码，如 K7M2PQ" bindinput="setJoinCode" adjust-position="{{true}}" cursor-spacing="120" />
+          <view class="form-hint">6 位字母数字（不含 0/O/1/I/L），由朋友在聚会详情页复制给你</view>
+        </view>
+      </view>
+      <view class="modal-footer">
+        <button class="modal-submit" disabled="{{joining}}" bindtap="submitJoinCode">{{joining ? '查找中…' : '立即加入'}}</button>
+      </view>
+    </view>
+  </view>
+</view>

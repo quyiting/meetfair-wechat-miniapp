@@ -1,0 +1,28 @@
+<view wx:if="{{venue}}" class="place-page">
+  <map class="place-map" latitude="{{venue.latitude}}" longitude="{{venue.longitude}}" scale="14" markers="{{markers}}"></map>
+  <view class="page-shell place-shell">
+    <view class="place-heading">
+      <view><view class="tag">公平推荐</view><view class="place-name">{{venue.name}}</view><view class="place-meta">{{venue.metaText}}</view></view>
+      <view class="fair-badge"><text>{{venue.fairness}}</text><text>推荐</text></view>
+    </view>
+    <view class="address"><text class="address-icon">⌖</text><text>{{venue.address}}</text></view>
+    <view class="place-note">{{venue.highlight}}</view>
+    <view wx:if="{{venue.budgetStatus}}" class="budget-detail">预算匹配：{{venue.budgetStatus}}</view>
+
+    <view class="metrics card">
+      <view><text class="metric-value">{{venue.maxMinutes}}</text><text class="metric-unit"> 分钟</text><view class="metric-label">最远成员预计通勤</view></view>
+      <view class="metric-separator"></view>
+      <view><text class="metric-value">{{venue.averageMinutes}}</text><text class="metric-unit"> 分钟</text><view class="metric-label">所有人平均通勤</view></view>
+    </view>
+
+    <view class="section-title travel-title">每个人要走多远</view>
+    <view class="travel-list card">
+      <view wx:for="{{venue.travel}}" wx:key="memberId" class="travel-row">
+        <view class="travel-person"><view class="tiny-avatar">{{item.shortName}}</view><text>{{item.name}}</text></view>
+        <view class="travel-time"><text>{{item.minutes}} 分钟 · {{item.transportLabel}}{{item.isEstimated ? '（估算）' : ''}}</text><text>{{item.distance}} km</text></view>
+      </view>
+    </view>
+
+    <view class="bottom-actions"><button class="nav-button" bindtap="openNavigation">导航去这里</button><button class="vote-large {{venue.hasVoted ? 'voted' : ''}}" bindtap="toggleVote">{{venue.voteButtonText}} {{venue.voteSuffix}}</button></view>
+  </view>
+</view>

@@ -1,0 +1,7 @@
+{
+  "name": "venueService",
+  "version": "1.0.0",
+  "description": "聚点：服务端地点搜索，避免地图密钥进入小程序包",
+  "main": "index.js",
+  "dependencies": {}
+}

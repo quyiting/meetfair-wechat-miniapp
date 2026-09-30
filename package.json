@@ -1,0 +1,7 @@
+{
+  "name": "meetfair-miniprogram",
+  "private": true,
+  "scripts": {
+    "test": "node tests/recommend.test.js && node tests/store.test.js"
+  }
+}

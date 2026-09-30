@@ -1,0 +1,80 @@
+page {
+  background: #f6f8fc;
+  color: #15213a;
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", Arial, sans-serif;
+  font-size: 28rpx;
+}
+
+view, text, button, input {
+  box-sizing: border-box;
+}
+
+button::after {
+  border: 0;
+}
+
+.page-shell {
+  min-height: 100vh;
+  padding: 32rpx 32rpx calc(48rpx + env(safe-area-inset-bottom));
+}
+
+.eyebrow {
+  color: #3970ff;
+  font-size: 22rpx;
+  font-weight: 700;
+  letter-spacing: 1.5rpx;
+}
+
+.section-title {
+  color: #16213a;
+  font-size: 34rpx;
+  font-weight: 800;
+}
+
+.section-subtitle {
+  color: #75819a;
+  font-size: 25rpx;
+  line-height: 1.55;
+  margin-top: 8rpx;
+}
+
+.card {
+  background: #ffffff;
+  border: 1rpx solid #e9edf5;
+  border-radius: 28rpx;
+  box-shadow: 0 12rpx 32rpx rgba(32, 61, 119, 0.055);
+}
+
+.primary-button, .secondary-button {
+  align-items: center;
+  border-radius: 18rpx;
+  display: flex;
+  font-size: 30rpx;
+  font-weight: 700;
+  height: 98rpx;
+  justify-content: center;
+  line-height: 1;
+}
+
+.primary-button {
+  background: #1f5eff;
+  color: #ffffff;
+  box-shadow: 0 12rpx 24rpx rgba(31, 94, 255, 0.22);
+}
+
+.primary-button:active { background: #164cdc; }
+
+.secondary-button {
+  background: #eef3ff;
+  color: #245ce9;
+}
+
+.tag {
+  background: #f0f4ff;
+  border-radius: 999rpx;
+  color: #3369e8;
+  display: inline-flex;
+  font-size: 22rpx;
+  font-weight: 700;
+  padding: 9rpx 16rpx;
+}

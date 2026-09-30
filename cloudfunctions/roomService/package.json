@@ -1,0 +1,9 @@
+{
+  "name": "roomService",
+  "version": "1.0.0",
+  "description": "聚点：创建/读取聚会，生成 6 位聚会码",
+  "main": "index.js",
+  "dependencies": {
+    "wx-server-sdk": "~2.6.3"
+  }
+}

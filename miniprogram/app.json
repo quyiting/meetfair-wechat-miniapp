@@ -1,0 +1,23 @@
+{
+  "pages": [
+    "pages/index/index",
+    "pages/create/create",
+    "pages/room/room",
+    "pages/place/place"
+  ],
+  "window": {
+    "backgroundColor": "#f6f8fc",
+    "backgroundTextStyle": "light",
+    "navigationBarBackgroundColor": "#1f5eff",
+    "navigationBarTitleText": "聚点",
+    "navigationBarTextStyle": "white"
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json",
+  "permission": {
+    "scope.userLocation": {
+      "desc": "用于计算你与朋友的公平聚会地点"
+    }
+  },
+  "requiredPrivateInfos": ["getLocation", "chooseLocation"]
+}
