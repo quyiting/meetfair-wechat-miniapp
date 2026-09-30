@@ -134,13 +134,13 @@ Page({
     const point = midpoint(room.members)
     wx.showLoading({ title: '搜索附近地点' })
     // 始终搜索全部类别，缓存后按标签筛选
-    getNearbyVenues(point, 'all').then((searchResult) => {
+    getNearbyVenues(point, 'all', room.meetingDate, room.meetingTime).then((searchResult) => {
       room.venues = searchResult.venues
       room.venueSource = searchResult.source
       room.venueSearchAt = Date.now()
       room.routeMatrix = {}
       const routeCandidates = recommendVenues(room, 'all').slice(0, 3)
-      return getRouteMatrix(room.members, routeCandidates).then((routeResult) => {
+      return getRouteMatrix(room.members, routeCandidates, room.meetingDate, room.meetingTime).then((routeResult) => {
         room.routeMatrix = routeResult.routeMatrix || {}
         return room.cloudId
           ? cloudSetVenues(room, searchResult.venues, searchResult.source, room.routeMatrix)

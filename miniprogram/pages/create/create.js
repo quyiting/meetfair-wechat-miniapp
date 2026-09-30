@@ -150,7 +150,7 @@ Page({
     const meetingPoint = midpoint(members)
     this.setData({ creating: true })
     wx.showLoading({ title: '正在搜索附近地点' })
-    getNearbyVenues(meetingPoint, this.data.activeCategory).then((searchResult) => {
+    getNearbyVenues(meetingPoint, this.data.activeCategory, this.data.meetingDate, this.data.meetingTime).then((searchResult) => {
       const room = {
         id: `room-${Date.now()}`,
         title,
@@ -168,7 +168,7 @@ Page({
         createdAt: Date.now()
       }
       const routeCandidates = recommendVenues(room, 'all').slice(0, 3)
-      return getRouteMatrix(members, routeCandidates).then((routeResult) => {
+      return getRouteMatrix(members, routeCandidates, room.meetingDate, room.meetingTime).then((routeResult) => {
         room.routeMatrix = routeResult.routeMatrix || {}
         createRoom(room)
         return cloudCreateRoom(room)

@@ -7,7 +7,7 @@ function getSearchSource() {
   }
 }
 
-function getNearbyVenues(origin, category) {
+function getNearbyVenues(origin, category, meetingDate, meetingTime) {
   return new Promise((resolve, reject) => {
     if (!wx.cloud || !wx.cloud.callFunction) {
       reject(new Error('云开发不可用，无法搜索附近地点'))
@@ -15,7 +15,7 @@ function getNearbyVenues(origin, category) {
     }
     wx.cloud.callFunction({
       name: 'venueService',
-      data: { origin, category: category || 'all' },
+      data: { origin, category: category || 'all', meetingDate, meetingTime },
       success: (response) => {
         const result = response.result || {}
         if (!result.ok) {
@@ -29,7 +29,7 @@ function getNearbyVenues(origin, category) {
   })
 }
 
-function getRouteMatrix(members, venues) {
+function getRouteMatrix(members, venues, meetingDate, meetingTime) {
   return new Promise((resolve) => {
     if (!wx.cloud || !wx.cloud.callFunction || !venues.length) {
       resolve({ available: false, routeMatrix: {} })
@@ -37,7 +37,7 @@ function getRouteMatrix(members, venues) {
     }
     wx.cloud.callFunction({
       name: 'venueService',
-      data: { action: 'routes', members, venues },
+      data: { action: 'routes', members, venues, meetingDate, meetingTime },
       success: (response) => {
         const result = response.result || {}
         resolve(result.ok ? result : { available: false, routeMatrix: {} })

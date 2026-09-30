@@ -6,6 +6,47 @@ const AMAP_CATEGORY_TYPES = { food: '050000', cinema: '080601', coffee: '050500'
 const CATEGORY_KEYS = Object.keys(CATEGORY_QUERIES)
 const PAGE_SIZE = 20
 const SEARCH_RADIUS = 8000
+const HOURS_PATTERN = /^\d{2}:\d{2}-\d{2}:\d{2}(?:\s+\d{2}:\d{2}-\d{2}:\d{2})*$/
+const WEEKDAYS = '日一二三四五六'
+
+function timeInHours(hours, time) {
+  if (!HOURS_PATTERN.test(hours)) return 'unknown'
+  const target = Number(time.slice(0, 2)) * 60 + Number(time.slice(3))
+  return hours.split(/\s+/).some((range) => {
+    const [start, end] = range.split('-').map((part) => Number(part.slice(0, 2)) * 60 + Number(part.slice(3)))
+    return end >= start ? target >= start && target < end : target >= start || target < end
+  }) ? 'open' : 'closed'
+}
+
+function openingStatus(todayHours, weekHours, date, time, today) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}$/.test(time)) return 'unknown'
+  if (date === today) {
+    if (/24小时/.test(todayHours)) return 'open'
+    return todayHours ? timeInHours(todayHours.trim(), time) : 'unknown'
+  }
+  if (!weekHours) return 'unknown'
+  const weekday = new Date(date + 'T00:00:00Z').getUTCDay()
+  if (!Number.isFinite(weekday)) return 'unknown'
+  const parts = weekHours.split(/[；;]/)
+  for (const part of parts) {
+    const match = part.trim().match(/^周([日一二三四五六])(?:至周([日一二三四五六]))?[:：](.+)$/)
+    if (!match || !HOURS_PATTERN.test(match[3].trim())) return 'unknown'
+    const start = WEEKDAYS.indexOf(match[1])
+    const end = match[2] ? WEEKDAYS.indexOf(match[2]) : start
+    if (start <= end ? weekday >= start && weekday <= end : weekday >= start || weekday <= end) {
+      if (timeInHours(match[3].trim(), time) === 'open') return 'open'
+    }
+  }
+  return 'closed'
+}
+
+function transitDeparture(date, time, minutes) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}$/.test(time) || !Number.isFinite(minutes)) return null
+  const [year, month, day] = date.split('-').map(Number)
+  const [hour, minute] = time.split(':').map(Number)
+  const planned = new Date(Date.UTC(year, month - 1, day, hour, minute) - minutes * 60000)
+  return { date: planned.toISOString().slice(0, 10), time: planned.toISOString().slice(11, 16).replace(':', '-') }
+}
 
 function md5(value) {
   return crypto.createHash('md5').update(value, 'utf8').digest('hex')
@@ -63,39 +104,50 @@ async function searchTencent(origin, category) {
   return (payload.data || []).map((result) => toTencentVenue(result, category))
 }
 
-function toAmapVenue(poi, category) {
+function toAmapVenue(poi, category, meeting) {
   const coords = String(poi.location || '').split(',')
-  const biz = poi.biz_ext || {}
+  const biz = poi.business || poi.biz_ext || {}
   const rating = Number(biz.rating)
   const price = Number(biz.cost)
+  const chinaToday = new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10)
+  const status = openingStatus(biz.opentime_today || '', biz.opentime_week || '', meeting.date, meeting.time, chinaToday)
   return {
     id: 'amap-' + (poi.id || coords.join('-') + '-' + poi.name), providerId: poi.id || '', cityCode: String(poi.citycode || ''),
     name: poi.name || '未命名地点', category,
     address: (typeof poi.address === 'string' && poi.address) || (typeof poi.adname === 'string' && poi.adname) || '地址信息暂缺',
     latitude: Number(coords[1]), longitude: Number(coords[0]),
-    rating: rating > 0 ? rating : null, price: price > 0 ? Math.round(price) : null, open: true,
+    rating: rating > 0 ? rating : null, price: price > 0 ? Math.round(price) : null,
+    openingStatus: status, openingText: status === 'open' ? '预计营业' : status === 'closed' ? '预计歇业' : '营业时间未知',
     highlight: (typeof poi.tel === 'string' && poi.tel ? '电话 ' + poi.tel : '') || (typeof poi.type === 'string' && poi.type) || '高德地图地点数据',
     distanceMeters: Number(poi.distance || 0), source: 'amap'
   }
 }
 
-async function searchAmap(origin, category) {
+async function searchAmap(origin, category, meeting) {
   const key = process.env.AMAP_KEY
   const sk = process.env.AMAP_SK || ''
   if (!key) throw new Error('云函数未配置 AMAP_KEY')
-  const path = '/v3/place/around'
+  const path = '/v5/place/around'
   const params = {
     key, location: origin.longitude + ',' + origin.latitude, types: AMAP_CATEGORY_TYPES[category],
-    radius: SEARCH_RADIUS, offset: PAGE_SIZE, page: 1, extensions: 'all', sortrule: 'distance'
+    radius: SEARCH_RADIUS, page_size: PAGE_SIZE, page_num: 1, show_fields: 'business', sortrule: 'distance'
   }
   if (sk) params.sig = md5(sortedQuery(params) + sk)
-  const response = await requestJson('restapi.amap.com', path, params)
-  const payload = response.data || {}
+  let response = await requestJson('restapi.amap.com', path, params)
+  let payload = response.data || {}
+  if (response.statusCode !== 200 || payload.status !== '1') {
+    const oldPath = '/v3/place/around'
+    const oldParams = { key, location: params.location, types: params.types, radius: SEARCH_RADIUS,
+      offset: PAGE_SIZE, page: 1, extensions: 'all', sortrule: 'distance' }
+    if (sk) oldParams.sig = md5(sortedQuery(oldParams) + sk)
+    response = await requestJson('restapi.amap.com', oldPath, oldParams)
+    payload = response.data || {}
+  }
   if (response.statusCode !== 200 || payload.status !== '1') throw new Error(payload.info || '高德地图请求失败')
-  return (payload.pois || []).map((poi) => toAmapVenue(poi, category))
+  return (payload.pois || []).map((poi) => toAmapVenue(poi, category, meeting)).filter((venue) => venue.openingStatus !== 'closed')
 }
 
-async function getAmapRoute(member, venue) {
+async function getAmapRoute(member, venue, meetingDate, meetingTime) {
   const key = process.env.AMAP_KEY
   const sk = process.env.AMAP_SK || ''
   const routeType = { driving: 'driving', walking: 'walking', bicycle: 'bicycling', transit: 'transit/integrated' }[member.transport] || 'transit/integrated'
@@ -112,6 +164,10 @@ async function getAmapRoute(member, venue) {
     params.city1 = venue.cityCode
     params.city2 = venue.cityCode
     params.AlternativeRoute = 1
+    const estimated = (venue.travel || []).find((item) => item.memberId === member.id)
+    const departure = estimated && transitDeparture(meetingDate, meetingTime, estimated.minutes)
+    const meetingAt = Date.parse(meetingDate + 'T' + meetingTime + ':00+08:00')
+    if (departure && meetingAt > Date.now()) Object.assign(params, departure)
   }
   if (sk) params.sig = md5(sortedQuery(params) + sk)
   try {
@@ -147,7 +203,7 @@ async function getRouteMatrix(event) {
   // 限制并发，避免瞬间打满地图服务 QPS。
   for (let index = 0; index < pairs.length; index += 5) {
     const batch = pairs.slice(index, index + 5)
-    const batchResults = await Promise.all(batch.map((pair) => getAmapRoute(pair.member, pair.venue)))
+    const batchResults = await Promise.all(batch.map((pair) => getAmapRoute(pair.member, pair.venue, event.meetingDate, event.meetingTime)))
     results.push.apply(results, batchResults)
   }
   const routeMatrix = {}
@@ -173,7 +229,8 @@ exports.main = async (event) => {
     if (categories.some((category) => CATEGORY_KEYS.indexOf(category) < 0)) return { ok: false, message: '地点类别不合法' }
     const provider = process.env.AMAP_KEY ? 'amap' : 'tencent'
     const search = provider === 'amap' ? searchAmap : searchTencent
-    const groups = await Promise.all(categories.map((category) => search({ latitude, longitude }, category)))
+    const meeting = { date: String(event.meetingDate || ''), time: String(event.meetingTime || '') }
+    const groups = await Promise.all(categories.map((category) => search({ latitude, longitude }, category, meeting)))
     const venues = [].concat.apply([], groups).filter((venue) => Number.isFinite(venue.latitude) && Number.isFinite(venue.longitude))
     return {
       ok: true, venues,
@@ -187,3 +244,6 @@ exports.main = async (event) => {
     return { ok: false, message: error.message || '地点搜索失败' }
   }
 }
+
+module.exports.openingStatus = openingStatus
+module.exports.transitDeparture = transitDeparture

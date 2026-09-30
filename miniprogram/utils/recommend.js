@@ -83,6 +83,7 @@ function recommendVenues(room, category, goal = 'max') {
     const metaText = [CATEGORY_LABELS[venue.category]]
       .concat(rating > 0 ? [`★ ${rating}`] : [])
       .concat(price > 0 ? [`人均 ¥${price}`] : [])
+      .concat(venue.openingText ? [venue.openingText] : [])
       .join(' · ')
     const budgetStatus = price > 0
       ? (membersWithBudget.length
