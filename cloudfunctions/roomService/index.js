@@ -124,6 +124,7 @@ async function createRoom(room, openid) {
       id: String(room.id).slice(0, 80),
       title: String(room.title).trim().slice(0, 18),
       category: room.category,
+      preferenceText: String(room.preferenceText || '').trim().slice(0, 60),
       transport: 'mixed',
       dateText: String(room.dateText || '').slice(0, 40),
       meetingDate: String(room.meetingDate || '').slice(0, 10),

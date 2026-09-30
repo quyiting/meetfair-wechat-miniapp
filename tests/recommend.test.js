@@ -54,4 +54,21 @@ const categoriesRoom = {
 }
 assert.deepStrictEqual(routeCandidates(categoriesRoom).map((venue) => venue.id).sort(), ['cinema', 'coffee', 'food', 'fun'])
 
+const preferenceRoom = {
+  category: 'food', transport: 'mixed', members,
+  preferenceText: '想找安静、有包间且停车方便的地方',
+  venues: [
+    Object.assign({}, venues[0], { id: 'plain', name: '普通餐厅', highlight: '餐饮服务' }),
+    Object.assign({}, venues[0], { id: 'matched', name: '花园餐厅', tags: '安静 包间', parkingType: '地下停车场' })
+  ],
+  routeMatrix: {
+    plain: { a: { minutes: 20 }, b: { minutes: 20 } },
+    matched: { a: { minutes: 20 }, b: { minutes: 20 } }
+  }
+}
+const preferred = recommendVenues(preferenceRoom, 'all')
+assert.strictEqual(preferred[0].id, 'matched')
+assert.strictEqual(preferred[0].preferenceMatchText, '公开资料匹配：安静、包间、停车')
+assert.strictEqual(preferred[1].preferenceMatchText, '')
+
 console.log('recommend tests: ok')

@@ -291,6 +291,8 @@ function encodeRoom(room) {
     parts.push(m.budget || 0)
   })
 
+  writeStr(room.preferenceText || '')
+
   return bytesToBase36(parts)
 }
 
@@ -359,6 +361,8 @@ function decodeRoom(code) {
       })
     }
 
+    // 旧版长码在成员列表后结束；新版附加可选的地点偏好。
+    const preferenceText = pos < bytes.length ? readStr() : ''
     // 必须恰好读完所有字节，多一个或少一个都视为无效
     if (pos !== bytes.length) throw new Error('聚会码校验失败')
 
@@ -367,6 +371,7 @@ function decodeRoom(code) {
       title,
       category,
       dateText: dateText || '',
+      preferenceText,
       members,
       votes: {},
       venues: [],

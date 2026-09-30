@@ -46,6 +46,7 @@ Page({
     categories,
     budgets,
     activeCategory: 'food',
+    preferenceText: '',
     meetingDate: todayText(),
     meetingTime: '18:30',
     minDate: todayText(),
@@ -65,6 +66,9 @@ Page({
   },
   selectCategory(event) {
     this.setData({ activeCategory: event.currentTarget.dataset.id })
+  },
+  setPreferenceText(event) {
+    this.setData({ preferenceText: event.detail.value.slice(0, 60) })
   },
   selectMeetingDate(event) {
     this.setData({ meetingDate: event.detail.value })
@@ -170,6 +174,7 @@ Page({
         id: `room-${Date.now()}`,
         title,
         category: this.data.activeCategory,
+        preferenceText: this.data.preferenceText.trim(),
         transport: 'mixed',
         dateText: `${this.data.meetingDate} ${this.data.meetingTime}`,
         meetingDate: this.data.meetingDate,

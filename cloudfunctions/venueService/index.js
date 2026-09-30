@@ -85,6 +85,7 @@ function toTencentVenue(result, category) {
     latitude: Number(location.lat), longitude: Number(location.lng), rating: null, price: null, open: true,
     openingText: '营业时间未知',
     highlight: result.tel ? '电话 ' + result.tel : (result.category || '腾讯位置服务地点数据'),
+    tags: result.category || '',
     distanceMeters: Number(result._distance || 0), source: 'tencent'
   }
 }
@@ -119,6 +120,8 @@ function toAmapVenue(poi, category, meeting) {
     latitude: Number(coords[1]), longitude: Number(coords[0]),
     rating: rating > 0 ? rating : null, price: price > 0 ? Math.round(price) : null,
     openingStatus: status, openingText: status === 'open' ? '预计营业' : status === 'closed' ? '预计歇业' : '营业时间未知',
+    tags: typeof biz.tag === 'string' ? biz.tag : '',
+    parkingType: typeof biz.parking_type === 'string' ? biz.parking_type : '',
     highlight: (typeof poi.tel === 'string' && poi.tel ? '电话 ' + poi.tel : '') || (typeof poi.type === 'string' && poi.type) || '高德地图地点数据',
     distanceMeters: Number(poi.distance || 0), source: 'amap'
   }

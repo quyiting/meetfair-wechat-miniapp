@@ -9,6 +9,12 @@
   </view>
 
   <view class="form-block">
+    <view class="field-label">想要什么样的地点（选填）</view>
+    <input class="title-input" value="{{preferenceText}}" maxlength="60" bindinput="setPreferenceText" placeholder="例如：安静、有包间、停车方便" />
+    <view class="prototype-tip">当前识别“安静、包间、停车”三类词，仅在地图资料有明确线索时参与同等通勤候选的排序。</view>
+  </view>
+
+  <view class="form-block">
     <view class="field-label">想做什么</view>
     <view class="category-grid">
       <view wx:for="{{categories}}" wx:key="id" class="category-item {{activeCategory === item.id ? 'category-active' : ''}}" bindtap="selectCategory" data-id="{{item.id}}">

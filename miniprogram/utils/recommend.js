@@ -57,6 +57,19 @@ function getFairnessLabel(maxMinutes) {
 const MAX_WEIGHT = 1.8
 const AVG_WEIGHT = 0.7
 const CATEGORY_BONUS = 12
+const PREFERENCES = [
+  { label: '安静', wanted: /安静|清静|不吵/, evidence: /安静|清静|静谧/ },
+  { label: '包间', wanted: /包间|包厢/, evidence: /包间|包厢/ },
+  { label: '停车', wanted: /停车|车位/, evidence: /停车场|停车位|可停车|车位/ }
+]
+
+function preferenceMatches(venue, text) {
+  const evidence = [venue.name, venue.tags, venue.highlight, venue.parkingType].filter(Boolean).join(' ')
+  return PREFERENCES.filter((item) => item.wanted.test(text) &&
+    !new RegExp('(不要|无需|不需要)' + item.label).test(text) &&
+    item.evidence.test(evidence) && !new RegExp('(无|没有)' + item.label).test(evidence))
+    .map((item) => item.label)
+}
 
 function clampScore(value) {
   return Math.max(0, Math.min(100, value))
@@ -91,9 +104,10 @@ function recommendVenues(room, category, goal = 'max') {
     const membersWithBudget = price > 0 ? room.members.filter((member) => Number(member.budget) > 0) : []
     const overBudgetMembers = membersWithBudget.filter((member) => price > Number(member.budget))
     const budgetPenalty = overBudgetMembers.length * 12
+    const matchedPreferences = preferenceMatches(venue, String(room.preferenceText || ''))
     // rawScore 用于排序，保留负值以保证远近地点之间的次序不被打平；
     // score 仅作为 0~100 的展示用分值。
-    const rawScore = 100 - maxMinutes * MAX_WEIGHT - averageMinutes * AVG_WEIGHT + ratingBonus + categoryBonus - budgetPenalty
+    const rawScore = 100 - maxMinutes * MAX_WEIGHT - averageMinutes * AVG_WEIGHT + ratingBonus + categoryBonus - budgetPenalty + matchedPreferences.length * 5
     const score = clampScore(Math.round(rawScore))
     // 缺失的价格/评分不编造文案，界面据空字符串隐藏对应字段
     const metaText = [CATEGORY_LABELS[venue.category]]
@@ -118,6 +132,7 @@ function recommendVenues(room, category, goal = 'max') {
       categoryLabel: CATEGORY_LABELS[venue.category],
       metaText,
       budgetStatus,
+      preferenceMatchText: matchedPreferences.length ? `公开资料匹配：${matchedPreferences.join('、')}` : '',
       routeStatus: travel.every((item) => !item.isEstimated) ? '真实路线' : '含估算路线'
     })
   }).sort((a, b) => {

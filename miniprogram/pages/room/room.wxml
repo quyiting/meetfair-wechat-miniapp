@@ -36,6 +36,7 @@
           <view class="venue-title-row"><view class="venue-name">{{item.name}}</view><view class="fairness-tag">{{item.fairness}}</view></view>
           <view class="venue-info">{{item.metaText}}</view>
           <view class="venue-note">{{item.highlight}}</view>
+          <view wx:if="{{item.preferenceMatchText}}" class="preference-match">{{item.preferenceMatchText}}</view>
           <view wx:if="{{item.budgetStatus}}" class="budget-fit">{{item.budgetStatus}}</view>
           <view class="travel-summary">最远 <text>{{item.maxMinutes}} 分钟</text>　平均 {{item.averageMinutes}} 分钟 · 差距 {{item.spreadMinutes}} 分钟 · {{item.routeStatus}}</view>
         </view>
