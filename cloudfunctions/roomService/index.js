@@ -12,6 +12,7 @@ const CODE_CHARS = '23456789ABCDEFGHKMNPQRSTUVWXYZ'
 const CODE_LENGTH = 6
 const CODE_PATTERN = new RegExp('^[' + CODE_CHARS + ']{' + CODE_LENGTH + '}$')
 const ROOM_TTL_MS = 30 * 24 * 60 * 60 * 1000
+const RETENTION_HOURS = [1, 24, 168, 720]
 const CATEGORIES = ['food', 'cinema', 'coffee', 'fun']
 const CLAIM_CODE_PATTERN = /^[A-F0-9]{16}$/
 
@@ -38,6 +39,7 @@ function normalizeMember(member, id) {
   const latitude = Number(member.latitude)
   const longitude = Number(member.longitude)
   const transports = ['transit', 'driving', 'walking', 'bicycle']
+  const approximate = member.approximate === true
   if (!name || !Number.isFinite(latitude) || latitude < -90 || latitude > 90 ||
     !Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
     throw new Error('成员数据不合法')
@@ -47,9 +49,10 @@ function normalizeMember(member, id) {
     name,
     shortName: name.slice(0, 1),
     color: /^#[0-9a-f]{6}$/i.test(String(member.color || '')) ? String(member.color) : '#3675ff',
-    latitude,
-    longitude,
-    locationName: String(member.locationName || '').slice(0, 120),
+    latitude: approximate ? Math.round(latitude * 100) / 100 : latitude,
+    longitude: approximate ? Math.round(longitude * 100) / 100 : longitude,
+    locationName: approximate ? '大致位置（约 1 公里精度）' : String(member.locationName || '').slice(0, 120),
+    approximate,
     transport: transports.indexOf(member.transport) >= 0 ? member.transport : 'transit',
     budget: Math.max(0, Math.min(255, Number(member.budget) || 0))
   }
@@ -115,6 +118,8 @@ async function createRoom(room, openid) {
     if (existing.total > 0) continue
     const ownerMemberId = room.members[0].id || generateMemberId()
     const signalId = crypto.randomBytes(16).toString('hex')
+    const retentionHours = RETENTION_HOURS.indexOf(Number(room.retentionHours)) >= 0 ? Number(room.retentionHours) : 720
+    const expiresAt = Date.now() + retentionHours * 3600000
     const savedRoom = {
       id: String(room.id).slice(0, 80),
       title: String(room.title).trim().slice(0, 18),
@@ -123,6 +128,8 @@ async function createRoom(room, openid) {
       dateText: String(room.dateText || '').slice(0, 40),
       meetingDate: String(room.meetingDate || '').slice(0, 10),
       meetingTime: String(room.meetingTime || '').slice(0, 5),
+      retentionHours,
+      expiresAt,
       cloudId: code,
       members: room.members.map((member, index) => normalizeMember(member, index === 0 ? ownerMemberId : (member.id || generateMemberId()))),
       venues: room.venues,
@@ -140,7 +147,7 @@ async function createRoom(room, openid) {
         signals: { [openid]: signalId },
         createdAt: Date.now(),
         updatedAt: Date.now(),
-        expiresAt: Date.now() + ROOM_TTL_MS
+        expiresAt
       }
     })
     await publishSignals({ [openid]: signalId })
@@ -181,7 +188,7 @@ exports.main = async (event) => {
         await Promise.all(Object.values(doc.signals || {}).map((id) => db.collection(SIGNAL_COLLECTION).doc(id).remove().catch(() => {})))
         return { ok: false, message: '聚会已过期' }
       }
-      const room = Object.assign({}, doc.room, { cloudId: doc.code })
+      const room = Object.assign({}, doc.room, { cloudId: doc.code, expiresAt })
       const signalId = await ensureViewerSignal(doc, OPENID)
       return { ok: true, code: doc.code, room, viewerMemberId: getViewerMemberId(doc, OPENID), isOwner: doc.owner === OPENID,
         claimableMemberIds: doc.owner === OPENID ? claimableMemberIds(doc) : [], signalId }
@@ -256,6 +263,7 @@ exports.main = async (event) => {
       const venueId = String(event.venueId || '')
       const doc = CODE_PATTERN.test(code) ? await findRoom(code) : null
       if (!doc) return { ok: false, message: '聚会不存在' }
+      if (doc.expiresAt < Date.now()) return { ok: false, message: '聚会已过期' }
       const memberId = getViewerMemberId(doc, OPENID)
       if (!memberId) return { ok: false, message: '请先加入聚会' }
       if (!(doc.room.venues || []).some((venue) => venue.id === venueId)) return { ok: false, message: '地点不存在' }
@@ -274,6 +282,7 @@ exports.main = async (event) => {
       const code = String(event.code || '').toUpperCase()
       const doc = CODE_PATTERN.test(code) ? await findRoom(code) : null
       if (!doc) return { ok: false, message: '聚会不存在' }
+      if (doc.expiresAt < Date.now()) return { ok: false, message: '聚会已过期' }
       if (!getViewerMemberId(doc, OPENID)) return { ok: false, message: '请先加入聚会' }
       if (!Array.isArray(event.venues) || event.venues.length > 100) return { ok: false, message: '地点数据不合法' }
       const room = Object.assign({}, doc.room, {
@@ -286,6 +295,41 @@ exports.main = async (event) => {
       await db.collection(COLLECTION).doc(doc._id).update({ data: { room, updatedAt: Date.now() } })
       await publishSignals(doc.signals)
       return { ok: true, code, room, viewerMemberId: getViewerMemberId(doc, OPENID), isOwner: doc.owner === OPENID, signalId: (doc.signals || {})[OPENID] || '' }
+    }
+
+    if (action === 'leave') {
+      const code = String(event.code || '').toUpperCase()
+      const doc = CODE_PATTERN.test(code) ? await findRoom(code) : null
+      if (!doc) return { ok: false, message: '聚会不存在' }
+      if (doc.owner === OPENID) return { ok: false, message: '创建者请删除整个聚会' }
+      const result = await db.runTransaction(async (transaction) => {
+        const current = (await transaction.collection(COLLECTION).doc(doc._id).get()).data
+        if (!current || current.expiresAt < Date.now()) throw new Error('聚会已过期')
+        const memberId = getViewerMemberId(current, OPENID)
+        if (!memberId) throw new Error('你尚未加入聚会')
+        const votes = {}
+        Object.keys(current.room.votes || {}).forEach((venueId) => {
+          votes[venueId] = current.room.votes[venueId].filter((id) => id !== memberId)
+        })
+        const routeMatrix = {}
+        Object.keys(current.room.routeMatrix || {}).forEach((venueId) => {
+          const routes = Object.assign({}, current.room.routeMatrix[venueId])
+          delete routes[memberId]
+          routeMatrix[venueId] = routes
+        })
+        const room = Object.assign({}, current.room, {
+          members: current.room.members.filter((member) => member.id !== memberId), votes, routeMatrix
+        })
+        const memberBindings = (current.memberBindings || []).filter((item) => item.openid !== OPENID)
+        const signals = Object.assign({}, current.signals || {})
+        const removedSignalId = signals[OPENID]
+        delete signals[OPENID]
+        await transaction.collection(COLLECTION).doc(doc._id).update({ data: { room, memberBindings, signals, updatedAt: Date.now() } })
+        return { signals, removedSignalId }
+      })
+      if (result.removedSignalId) await db.collection(SIGNAL_COLLECTION).doc(result.removedSignalId).remove().catch(() => {})
+      await publishSignals(result.signals)
+      return { ok: true }
     }
 
     if (action === 'delete') {

@@ -52,6 +52,7 @@ async function run() {
   const created = await roomService.main({ action: 'create', room })
   assert.strictEqual(created.ok, true)
   const code = created.code
+  assert(created.room.expiresAt > Date.now() + 29 * 24 * 3600000)
   assert.strictEqual(signals[created.signalId].openid, 'owner')
 
   openid = 'stranger'
@@ -79,10 +80,24 @@ async function run() {
   const voted = await roomService.main({ action: 'toggleVote', code, venueId: 'venue-1' })
   assert.strictEqual(voted.ok, true)
   assert.notStrictEqual(signals[created.signalId].version, previousVersion)
+  const left = await roomService.main({ action: 'leave', code })
+  assert.strictEqual(left.ok, true)
+  assert(!docs[0].room.members.some((item) => item.id === 'guest-seat'))
+  assert.deepStrictEqual(docs[0].room.votes['venue-1'], [])
+  assert.strictEqual(signals[joined.signalId], undefined)
 
   openid = 'another'
   const replay = await roomService.main({ action: 'join', code, claimCode: issued.claimCode, member: member('', '小李') })
   assert.strictEqual(replay.ok, false)
+  openid = 'next-owner'
+  const shortRoom = Object.assign({}, room, {
+    id: 'room-2', retentionHours: 1,
+    members: [Object.assign({}, member('next-owner-seat', '你'), { latitude: 31.230412, longitude: 121.473701, locationName: '详细地址', approximate: true })]
+  })
+  const shortLived = await roomService.main({ action: 'create', room: shortRoom })
+  assert(shortLived.room.expiresAt > Date.now() + 3500000 && shortLived.room.expiresAt < Date.now() + 3700000)
+  assert.strictEqual(shortLived.room.members[0].latitude, 31.23)
+  assert.strictEqual(shortLived.room.members[0].locationName, '大致位置（约 1 公里精度）')
   console.log('claim tests: ok')
 }
 

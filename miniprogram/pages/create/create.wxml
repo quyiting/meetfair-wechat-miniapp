@@ -29,6 +29,13 @@
     </view>
   </view>
 
+  <view class="form-block">
+    <view class="field-label">位置数据保留多久</view>
+    <picker mode="selector" range="{{retentionOptions}}" range-key="label" value="{{retentionIndex}}" bindchange="selectRetention">
+      <view class="meeting-time-picker">{{retentionOptions[retentionIndex].label}}</view>
+    </picker>
+  </view>
+
   <view class="member-section">
     <view class="member-section-head"><view><view class="field-label section-label">本地成员</view><view class="member-section-copy">至少 2 人，最多 8 人</view></view><view class="member-count">{{members.length}} / 8</view></view>
 
@@ -42,6 +49,7 @@
         <text class="location-pin">⌖</text><text class="member-location-text {{item.locationName ? '' : 'location-placeholder'}}">{{item.locationName || '在地图选择出发位置'}}</text><text class="choose-location">选择</text>
       </view>
       <view wx:if="{{index === 0}}" class="current-location-link" bindtap="locateMe">⌖ 使用本机当前位置</view>
+      <view class="privacy-option"><text>只共享约 1 公里精度的位置</text><switch checked="{{item.approximate}}" bindchange="toggleMemberApproximate" data-index="{{index}}" color="#1f5eff" /></view>
       <view class="member-option-label">出行方式</view>
       <view class="member-transport-row">
         <view class="member-transport {{item.transport === 'walking' ? 'member-transport-active' : ''}}" bindtap="selectMemberTransport" data-index="{{index}}" data-transport="walking">步行</view>
@@ -58,6 +66,6 @@
     <button class="add-member" bindtap="addMember">＋ 添加一位朋友</button>
   </view>
 
-  <view class="prototype-tip"><text>{{searchSource.title}}</text>{{searchSource.detail}} 创建后，成员位置会随聚会保存到云端，默认 30 天后过期。</view>
+  <view class="prototype-tip"><text>{{searchSource.title}}</text>{{searchSource.detail}} 创建后，成员位置会随聚会保存到云端，到期后失效；选择大致位置时，精确坐标不会上传。</view>
   <button class="primary-button create-button" disabled="{{creating}}" bindtap="createRoom">{{creating ? '正在生成推荐…' : '为 ' + members.length + ' 人生成推荐'}}</button>
 </view>

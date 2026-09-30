@@ -1,5 +1,5 @@
 const assert = require('assert')
-const { encodeRoom, decodeRoom } = require('../miniprogram/utils/store')
+const { encodeRoom, decodeRoom, getRooms } = require('../miniprogram/utils/store')
 
 const room = {
   id: 'room-test', title: '周末见面', category: 'food', dateText: '2026-09-28 18:30',
@@ -18,5 +18,13 @@ assert.strictEqual(decoded.members[1].transport, 'driving')
 assert.strictEqual(decoded.members[1].budget, 200)
 assert.strictEqual(decodeRoom(code.slice(0, -3)), null)
 assert.strictEqual(decodeRoom('not-a-valid-code'), null)
+
+let stored = [{ id: 'expired', expiresAt: Date.now() - 1000 }, { id: 'active', expiresAt: Date.now() + 100000 }]
+global.wx = {
+  getStorageSync: () => stored,
+  setStorageSync: (key, value) => { stored = value }
+}
+assert.deepStrictEqual(getRooms().map((item) => item.id), ['active'])
+assert.deepStrictEqual(stored.map((item) => item.id), ['active'])
 
 console.log('store tests: ok')

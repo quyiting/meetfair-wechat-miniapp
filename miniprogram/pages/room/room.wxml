@@ -54,6 +54,7 @@
       <button wx:for="{{claimableMembers}}" wx:key="id" class="claim-button" bindtap="issueClaimCode" data-id="{{item.id}}">生成 {{item.name}} 的认领码</button>
     </view>
     <button wx:if="{{room.currentUserIsOwner}}" class="delete-room-button" bindtap="deleteCurrentRoom">删除本次聚会及位置数据</button>
+    <button wx:if="{{isMember && !room.currentUserIsOwner}}" class="delete-room-button" bindtap="leaveCurrentRoom">退出聚会并删除我的位置</button>
   </view>
 
   <view wx:if="{{showJoinModal}}" class="modal-mask" bindtap="closeJoinModal">
@@ -81,6 +82,7 @@
               <button class="action-btn" bindtap="chooseJoinLocation">🗺️ 地图选点</button>
             </view>
           </view>
+          <view class="privacy-option"><text>只共享约 1 公里精度的位置</text><switch checked="{{joinApproximate}}" bindchange="toggleJoinApproximate" color="#1f5eff" /></view>
         </view>
         <view class="form-group">
           <view class="form-label">出行方式</view>

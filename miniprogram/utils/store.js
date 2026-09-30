@@ -7,7 +7,10 @@ function clone(value) {
 }
 
 function getRooms() {
-  return wx.getStorageSync(STORAGE_KEY) || []
+  const stored = wx.getStorageSync(STORAGE_KEY) || []
+  const active = stored.filter((room) => !room.expiresAt || room.expiresAt > Date.now())
+  if (active.length !== stored.length) saveRooms(active)
+  return active
 }
 
 function saveRooms(rooms) {
@@ -170,6 +173,14 @@ function cloudDeleteRoom(room) {
     return Promise.resolve()
   }
   return callRoomService('delete', { code: room.cloudId }).then(() => deleteRoom(room.id))
+}
+
+function cloudLeaveRoom(room) {
+  if (!room.cloudId) {
+    deleteRoom(room.id)
+    return Promise.resolve()
+  }
+  return callRoomService('leave', { code: room.cloudId }).then(() => deleteRoom(room.id))
 }
 
 // 紧凑编码：用数组代替对象，坐标转整数，base-36 编码
@@ -382,5 +393,6 @@ module.exports = {
   cloudIssueClaimCode,
   cloudToggleVote,
   cloudSetVenues,
+  cloudLeaveRoom,
   cloudDeleteRoom
 }

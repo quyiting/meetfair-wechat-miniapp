@@ -1,5 +1,6 @@
-const { getRoom, updateRoom, encodeRoom, addMemberToRoom, cloudGetRoom, cloudIssueClaimCode, cloudToggleVote, cloudSetVenues, cloudDeleteRoom } = require('../../utils/store')
+const { getRoom, updateRoom, encodeRoom, addMemberToRoom, cloudGetRoom, cloudIssueClaimCode, cloudToggleVote, cloudSetVenues, cloudLeaveRoom, cloudDeleteRoom } = require('../../utils/store')
 const { midpoint, candidateOrigins, routeCandidates, recommendVenues } = require('../../utils/recommend')
+const { prepareMemberLocation } = require('../../utils/privacy')
 const { CATEGORY_LABELS, TRANSPORT_LABELS } = require('../../utils/constants')
 const { getNearbyVenues, getRouteMatrix } = require('../../utils/venue-service')
 
@@ -46,6 +47,7 @@ Page({
     codeLabel: '聚会码',
     joinTransport: 'transit',
     joinBudget: 100,
+    joinApproximate: false,
     budgets,
     isMember: false,
     joinSubmitting: false
@@ -313,6 +315,9 @@ Page({
   selectJoinBudget(event) {
     this.setData({ joinBudget: Number(event.currentTarget.dataset.budget) })
   },
+  toggleJoinApproximate(event) {
+    this.setData({ joinApproximate: event.detail.value })
+  },
   submitJoin() {
     if (this.data.joinSubmitting) return
     const name = this.data.joinName.trim()
@@ -325,7 +330,7 @@ Page({
       return
     }
     const room = getRoom(this.roomId)
-    const member = {
+    const member = prepareMemberLocation({
       name,
       shortName: name.slice(0, 1),
       color: memberColors[room.members.length % memberColors.length],
@@ -333,8 +338,9 @@ Page({
       longitude: this.data.joinLongitude,
       locationName: this.data.joinLocationName,
       transport: this.data.joinTransport,
-      budget: this.data.joinBudget
-    }
+      budget: this.data.joinBudget,
+      approximate: this.data.joinApproximate
+    })
     this.setData({ joinSubmitting: true })
     addMemberToRoom(this.roomId, member, this.data.joinClaimCode).then(() => {
       this.setData({ joinSubmitting: false })
@@ -365,6 +371,26 @@ Page({
         }).catch((error) => {
           wx.hideLoading()
           wx.showToast({ title: error.message || '删除失败', icon: 'none' })
+        })
+      }
+    })
+  },
+  leaveCurrentRoom() {
+    const room = getRoom(this.roomId)
+    wx.showModal({
+      title: '退出聚会',
+      content: '退出后，你的位置和投票会从这次聚会中删除。',
+      confirmText: '退出并删除',
+      confirmColor: '#d14343',
+      success: (result) => {
+        if (!result.confirm) return
+        wx.showLoading({ title: '正在退出' })
+        cloudLeaveRoom(room).then(() => {
+          wx.hideLoading()
+          wx.reLaunch({ url: '/pages/index/index' })
+        }).catch((error) => {
+          wx.hideLoading()
+          wx.showToast({ title: error.message || '退出失败', icon: 'none' })
         })
       }
     })

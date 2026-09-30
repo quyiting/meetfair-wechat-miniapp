@@ -1,6 +1,7 @@
 const { createRoom, cloudCreateRoom } = require('../../utils/store')
 const { getNearbyVenues, getRouteMatrix, getSearchSource } = require('../../utils/venue-service')
 const { candidateOrigins, routeCandidates } = require('../../utils/recommend')
+const { prepareMemberLocation } = require('../../utils/privacy')
 
 const categories = [
   { id: 'food', icon: '🍜', label: '吃饭' },
@@ -34,7 +35,8 @@ function makeMember(index, name) {
     longitude: null,
     locationName: '',
     transport: 'transit',
-    budget: 100
+    budget: 100,
+    approximate: false
   }
 }
 
@@ -47,6 +49,13 @@ Page({
     meetingDate: todayText(),
     meetingTime: '18:30',
     minDate: todayText(),
+    retentionOptions: [
+      { hours: 1, label: '1 小时' },
+      { hours: 24, label: '1 天' },
+      { hours: 168, label: '7 天' },
+      { hours: 720, label: '30 天' }
+    ],
+    retentionIndex: 3,
     searchSource: getSearchSource(),
     members: [makeMember(0, '你')],
     creating: false
@@ -62,6 +71,9 @@ Page({
   },
   selectMeetingTime(event) {
     this.setData({ meetingTime: event.detail.value })
+  },
+  selectRetention(event) {
+    this.setData({ retentionIndex: Number(event.detail.value) })
   },
   updateMember(index, changes) {
     const members = this.data.members.map((member, memberIndex) => memberIndex === index ? Object.assign({}, member, changes) : member)
@@ -79,6 +91,9 @@ Page({
   selectMemberBudget(event) {
     const index = Number(event.currentTarget.dataset.index)
     this.updateMember(index, { budget: Number(event.currentTarget.dataset.budget) })
+  },
+  toggleMemberApproximate(event) {
+    this.updateMember(Number(event.currentTarget.dataset.index), { approximate: event.detail.value })
   },
   chooseMemberLocation(event) {
     const index = Number(event.currentTarget.dataset.index)
@@ -129,11 +144,11 @@ Page({
   createRoom() {
     if (this.data.creating) return
     const title = this.data.title.trim()
-    const members = this.data.members.map((member, index) => Object.assign({}, member, {
+    const members = this.data.members.map((member, index) => prepareMemberLocation(Object.assign({}, member, {
       id: member.id || `local-member-${Date.now()}-${index}`,
       name: member.name.trim() || (index === 0 ? '你' : `朋友 ${index + 1}`),
       shortName: (member.name.trim() || (index === 0 ? '你' : '友')).slice(0, 1)
-    }))
+    })))
     if (!title) {
       wx.showToast({ title: '给这次聚会起个名字吧', icon: 'none' })
       return
@@ -159,6 +174,8 @@ Page({
         dateText: `${this.data.meetingDate} ${this.data.meetingTime}`,
         meetingDate: this.data.meetingDate,
         meetingTime: this.data.meetingTime,
+        retentionHours: this.data.retentionOptions[this.data.retentionIndex].hours,
+        expiresAt: Date.now() + this.data.retentionOptions[this.data.retentionIndex].hours * 3600000,
         members,
         currentMemberId: members[0].id,
         currentUserIsOwner: true,

@@ -9,3 +9,4 @@
 .delete-room-button { background: transparent; color: #a14848; font-size: 25rpx; margin: 48rpx auto 8rpx; }
 .goal-tabs { display: flex; gap: 12rpx; margin-top: 16rpx; overflow-x: auto; white-space: nowrap; }
 .claim-card { margin-top: 22rpx; padding: 24rpx; }.claim-button { background: #edf3ff; border-radius: 12rpx; color: #3768d8; font-size: 23rpx; line-height: 62rpx; margin: 16rpx 0 0; }
+.privacy-option { align-items: center; color: #65728b; display: flex; font-size: 22rpx; justify-content: space-between; margin-top: 20rpx; }
