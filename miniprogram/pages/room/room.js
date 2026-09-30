@@ -1,4 +1,4 @@
-const { getRoom, updateRoom, encodeRoom, addMemberToRoom, cloudGetRoom, cloudToggleVote, cloudSetVenues, cloudDeleteRoom } = require('../../utils/store')
+const { getRoom, updateRoom, encodeRoom, addMemberToRoom, cloudGetRoom, cloudIssueClaimCode, cloudToggleVote, cloudSetVenues, cloudDeleteRoom } = require('../../utils/store')
 const { midpoint, recommendVenues } = require('../../utils/recommend')
 const { CATEGORY_LABELS, TRANSPORT_LABELS } = require('../../utils/constants')
 const { getNearbyVenues, getRouteMatrix } = require('../../utils/venue-service')
@@ -38,6 +38,7 @@ Page({
     ],
     showJoinModal: false,
     joinName: '',
+    joinClaimCode: '',
     joinLocationName: '',
     joinLatitude: null,
     joinLongitude: null,
@@ -85,6 +86,9 @@ Page({
     const selectedVenueId = this.data.selectedVenueId || (recommendations[0] && recommendations[0].id) || ''
     const markers = this.getMarkers(room, recommendations, selectedVenueId)
     const isMember = Boolean(room.currentMemberId && room.members.some((m) => m.id === room.currentMemberId))
+    const claimableMembers = room.currentUserIsOwner
+      ? room.members.filter((member) => (room.claimableMemberIds || []).indexOf(member.id) >= 0)
+      : []
     this.setData({
       room: Object.assign({}, room, {
         categoryLabel: CATEGORY_LABELS[room.category],
@@ -96,6 +100,7 @@ Page({
       selectedVenueId,
       markers,
       isMember,
+      claimableMembers,
       // 有云端短码就展示短码，否则退回本地长码预览
       codePreview: room.cloudId || (encodeRoom(room).slice(0, 12) + '...'),
       codeLabel: room.cloudId ? '聚会码 · 6 位' : '聚会码 · 长码'
@@ -200,6 +205,30 @@ Page({
     const name = event.detail.value.slice(0, 8)
     this.setData({ joinName: name })
   },
+  setJoinClaimCode(event) {
+    this.setData({ joinClaimCode: event.detail.value.slice(0, 16) })
+  },
+  issueClaimCode(event) {
+    const room = getRoom(this.roomId)
+    const memberId = event.currentTarget.dataset.id
+    const member = room.members.find((item) => item.id === memberId)
+    if (!member || !room.currentUserIsOwner || !room.cloudId) return
+    wx.showLoading({ title: '生成认领码' })
+    cloudIssueClaimCode(room, memberId).then((result) => {
+      wx.hideLoading()
+      wx.showModal({
+        title: `${member.name}的认领码`,
+        content: `${result.claimCode}\n请私下发给本人，并告知聚会码 ${room.cloudId}。重新生成后旧码会失效。`,
+        confirmText: '复制认领码',
+        success: (choice) => {
+          if (choice.confirm) wx.setClipboardData({ data: result.claimCode })
+        }
+      })
+    }).catch((error) => {
+      wx.hideLoading()
+      wx.showToast({ title: error.message || '生成失败', icon: 'none' })
+    })
+  },
   chooseJoinLocation() {
     wx.chooseLocation({
       success: (result) => {
@@ -261,7 +290,7 @@ Page({
       budget: this.data.joinBudget
     }
     this.setData({ joinSubmitting: true })
-    addMemberToRoom(this.roomId, member).then(() => {
+    addMemberToRoom(this.roomId, member, this.data.joinClaimCode).then(() => {
       this.setData({ joinSubmitting: false })
       this.closeJoinModal()
       this.loadRoom(true)

@@ -72,7 +72,8 @@ function cloudCreateRoom(room) {
     room = Object.assign({}, result.room || room, {
       cloudId: result.code,
       currentMemberId: result.viewerMemberId || room.members[0].id,
-      currentUserIsOwner: result.isOwner !== false
+      currentUserIsOwner: result.isOwner !== false,
+      claimableMemberIds: result.claimableMemberIds || []
     })
     updateRoom(room)
     console.log('[cloudCreateRoom] 成功，短码:', result.code)
@@ -89,7 +90,8 @@ function cloudGetRoom(code) {
     return Object.assign({}, result.room, {
       cloudId: result.code,
       currentMemberId: result.viewerMemberId || '',
-      currentUserIsOwner: Boolean(result.isOwner)
+      currentUserIsOwner: Boolean(result.isOwner),
+      claimableMemberIds: result.claimableMemberIds || []
     })
   }).catch((err) => {
     console.warn('[cloudGetRoom] 失败:', err.message)
@@ -97,17 +99,18 @@ function cloudGetRoom(code) {
   })
 }
 
-function addMemberToRoom(roomId, member) {
+function addMemberToRoom(roomId, member, claimCode) {
   const room = getRoom(roomId)
   if (!room) {
     return Promise.reject(new Error('聚会不存在'))
   }
   if (room.cloudId) {
-    return callRoomService('join', { code: room.cloudId, member }).then((result) => {
+    return callRoomService('join', { code: room.cloudId, member, claimCode }).then((result) => {
       const syncedRoom = Object.assign({}, result.room, {
         cloudId: result.code,
         currentMemberId: result.viewerMemberId || '',
-        currentUserIsOwner: Boolean(result.isOwner)
+        currentUserIsOwner: Boolean(result.isOwner),
+        claimableMemberIds: result.claimableMemberIds || []
       })
       updateRoom(syncedRoom)
       return syncedRoom
@@ -124,13 +127,18 @@ function addMemberToRoom(roomId, member) {
   return Promise.resolve(room)
 }
 
+function cloudIssueClaimCode(room, memberId) {
+  return callRoomService('issueClaimCode', { code: room.cloudId, memberId })
+}
+
 function cloudToggleVote(room, venueId) {
   if (!room.cloudId) return Promise.resolve(null)
   return callRoomService('toggleVote', { code: room.cloudId, venueId }).then((result) => {
     const syncedRoom = Object.assign({}, result.room, {
       cloudId: result.code,
       currentMemberId: result.viewerMemberId || '',
-      currentUserIsOwner: Boolean(result.isOwner)
+      currentUserIsOwner: Boolean(result.isOwner),
+      claimableMemberIds: room.claimableMemberIds || []
     })
     updateRoom(syncedRoom)
     return syncedRoom
@@ -143,7 +151,8 @@ function cloudSetVenues(room, venues, venueSource, routeMatrix) {
     const syncedRoom = Object.assign({}, result.room, {
       cloudId: result.code,
       currentMemberId: result.viewerMemberId || room.currentMemberId || '',
-      currentUserIsOwner: Boolean(result.isOwner)
+      currentUserIsOwner: Boolean(result.isOwner),
+      claimableMemberIds: room.claimableMemberIds || []
     })
     updateRoom(syncedRoom)
     return syncedRoom
@@ -365,6 +374,7 @@ module.exports = {
   cloudCreateRoom,
   cloudGetRoom,
   addMemberToRoom,
+  cloudIssueClaimCode,
   cloudToggleVote,
   cloudSetVenues,
   cloudDeleteRoom

@@ -48,6 +48,11 @@
       <view class="empty-copy">试试切换活动类型，或重新搜索折中区域附近的地点。</view>
       <button class="empty-action" bindtap="refreshNearby">重新搜索附近</button>
     </view>
+    <view wx:if="{{claimableMembers.length}}" class="claim-card card">
+      <view class="section-title">邀请预填成员认领</view>
+      <view class="section-subtitle">为每个人生成一次性认领码，私下发送给本人。</view>
+      <button wx:for="{{claimableMembers}}" wx:key="id" class="claim-button" bindtap="issueClaimCode" data-id="{{item.id}}">生成 {{item.name}} 的认领码</button>
+    </view>
     <button wx:if="{{room.currentUserIsOwner}}" class="delete-room-button" bindtap="deleteCurrentRoom">删除本次聚会及位置数据</button>
   </view>
 
@@ -61,7 +66,11 @@
         <view class="form-group">
           <view class="form-label">你的名字</view>
           <input class="form-input" placeholder="输入名字，最多8个字" value="{{joinName}}" bindinput="setJoinName" />
-          <view class="form-hint">创建者已经添加过你时，请填写相同名字以认领自己的位置。</view>
+          <view class="form-hint">创建者预填了你的信息时，请向创建者索取认领码。</view>
+        </view>
+        <view class="form-group">
+          <view class="form-label">认领码（选填）</view>
+          <input class="form-input" placeholder="认领预填成员时填写 16 位码" maxlength="16" value="{{joinClaimCode}}" bindinput="setJoinClaimCode" />
         </view>
         <view class="form-group">
           <view class="form-label">出发位置</view>

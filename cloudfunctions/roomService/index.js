@@ -1,4 +1,5 @@
 const cloud = require('wx-server-sdk')
+const crypto = require('crypto')
 
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
 
@@ -11,6 +12,12 @@ const CODE_LENGTH = 6
 const CODE_PATTERN = new RegExp('^[' + CODE_CHARS + ']{' + CODE_LENGTH + '}$')
 const ROOM_TTL_MS = 30 * 24 * 60 * 60 * 1000
 const CATEGORIES = ['food', 'cinema', 'coffee', 'fun']
+const CLAIM_CODE_PATTERN = /^[A-F0-9]{16}$/
+
+function claimableMemberIds(doc) {
+  const bound = (doc.memberBindings || []).map((item) => item.memberId)
+  return doc.room.members.filter((member) => bound.indexOf(member.id) < 0).map((member) => member.id)
+}
 
 function generateCode() {
   let code = ''
@@ -104,7 +111,8 @@ async function createRoom(room, openid) {
         expiresAt: Date.now() + ROOM_TTL_MS
       }
     })
-    return { code, room: savedRoom, viewerMemberId: ownerMemberId }
+    return { code, room: savedRoom, viewerMemberId: ownerMemberId,
+      claimableMemberIds: savedRoom.members.slice(1).map((member) => member.id) }
   }
   throw new Error('聚会码生成失败，请稍后重试')
 }
@@ -140,7 +148,29 @@ exports.main = async (event) => {
         return { ok: false, message: '聚会已过期' }
       }
       const room = Object.assign({}, doc.room, { cloudId: doc.code })
-      return { ok: true, code: doc.code, room, viewerMemberId: getViewerMemberId(doc, OPENID), isOwner: doc.owner === OPENID }
+      return { ok: true, code: doc.code, room, viewerMemberId: getViewerMemberId(doc, OPENID), isOwner: doc.owner === OPENID,
+        claimableMemberIds: doc.owner === OPENID ? claimableMemberIds(doc) : [] }
+    }
+
+    if (action === 'issueClaimCode') {
+      const code = String(event.code || '').toUpperCase()
+      const memberId = String(event.memberId || '')
+      const doc = CODE_PATTERN.test(code) ? await findRoom(code) : null
+      if (!doc) return { ok: false, message: '聚会不存在' }
+      if (doc.owner !== OPENID) return { ok: false, message: '只有创建者可以生成认领码' }
+      const claimCode = crypto.randomBytes(8).toString('hex').toUpperCase()
+      await db.runTransaction(async (transaction) => {
+        const current = (await transaction.collection(COLLECTION).doc(doc._id).get()).data
+        if (!current || current.owner !== OPENID || claimableMemberIds(current).indexOf(memberId) < 0) {
+          throw new Error('该成员已被认领或不存在')
+        }
+        if (current.expiresAt < Date.now()) throw new Error('聚会已过期')
+        const claimCodes = Object.assign({}, current.claimCodes || {}, {
+          [memberId]: crypto.createHash('sha256').update(claimCode).digest('hex')
+        })
+        await transaction.collection(COLLECTION).doc(doc._id).update({ data: { claimCodes, updatedAt: Date.now() } })
+      })
+      return { ok: true, claimCode }
     }
 
     if (action === 'join') {
@@ -148,25 +178,38 @@ exports.main = async (event) => {
       if (!CODE_PATTERN.test(code)) return { ok: false, message: '聚会码格式不正确' }
       const doc = await findRoom(code)
       if (!doc) return { ok: false, message: '聚会码不存在' }
-      const existingMemberId = getViewerMemberId(doc, OPENID)
-      if (existingMemberId) {
-        return { ok: true, code, room: Object.assign({}, doc.room, { cloudId: code }), viewerMemberId: existingMemberId, isOwner: doc.owner === OPENID }
-      }
-      const requestedName = String(event.member && event.member.name || '').trim().slice(0, 8)
-      const boundIds = (doc.memberBindings || []).map((item) => item.memberId)
-      const claimableMember = doc.room.members.find((member) => member.name === requestedName && boundIds.indexOf(member.id) < 0)
-      if (!claimableMember && doc.room.members.length >= 8) return { ok: false, message: '聚会人数已满' }
-      const memberId = claimableMember ? claimableMember.id : generateMemberId()
-      const member = normalizeMember(event.member, memberId)
-      const room = Object.assign({}, doc.room, {
-        cloudId: code,
-        members: claimableMember
-          ? doc.room.members.map((item) => item.id === memberId ? member : item)
-          : doc.room.members.concat(member)
+      const claimCode = String(event.claimCode || '').trim().toUpperCase()
+      const joined = await db.runTransaction(async (transaction) => {
+        const current = (await transaction.collection(COLLECTION).doc(doc._id).get()).data
+        if (!current) throw new Error('聚会不存在')
+        if (current.expiresAt < Date.now()) throw new Error('聚会已过期')
+        const existingMemberId = getViewerMemberId(current, OPENID)
+        if (existingMemberId) return { room: current.room, memberId: existingMemberId, doc: current }
+        let claimableMember = null
+        if (claimCode) {
+          if (!CLAIM_CODE_PATTERN.test(claimCode)) throw new Error('认领码格式不正确')
+          const hash = crypto.createHash('sha256').update(claimCode).digest('hex')
+          const memberId = Object.keys(current.claimCodes || {}).find((id) => current.claimCodes[id] === hash)
+          if (!memberId || claimableMemberIds(current).indexOf(memberId) < 0) throw new Error('认领码无效或已使用')
+          claimableMember = current.room.members.find((member) => member.id === memberId)
+        }
+        if (!claimableMember && current.room.members.length >= 8) throw new Error('聚会人数已满')
+        const memberId = claimableMember ? claimableMember.id : generateMemberId()
+        const member = normalizeMember(event.member, memberId)
+        const room = Object.assign({}, current.room, {
+          cloudId: code,
+          members: claimableMember
+            ? current.room.members.map((item) => item.id === memberId ? member : item)
+            : current.room.members.concat(member)
+        })
+        const memberBindings = (current.memberBindings || []).concat({ memberId, openid: OPENID })
+        const claimCodes = Object.assign({}, current.claimCodes || {})
+        if (claimableMember) delete claimCodes[memberId]
+        await transaction.collection(COLLECTION).doc(doc._id).update({ data: { room, memberBindings, claimCodes, updatedAt: Date.now() } })
+        return { room, memberId, doc: Object.assign({}, current, { room, memberBindings }) }
       })
-      const memberBindings = (doc.memberBindings || []).concat({ memberId, openid: OPENID })
-      await db.collection(COLLECTION).doc(doc._id).update({ data: { room, memberBindings, updatedAt: Date.now() } })
-      return { ok: true, code, room, viewerMemberId: memberId, isOwner: doc.owner === OPENID }
+      return { ok: true, code, room: joined.room, viewerMemberId: joined.memberId, isOwner: doc.owner === OPENID,
+        claimableMemberIds: doc.owner === OPENID ? claimableMemberIds(joined.doc) : [] }
     }
 
     if (action === 'toggleVote') {
