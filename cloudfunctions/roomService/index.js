@@ -272,38 +272,51 @@ exports.main = async (event) => {
       const venueId = String(event.venueId || '')
       const doc = CODE_PATTERN.test(code) ? await findRoom(code) : null
       if (!doc) return { ok: false, message: '聚会不存在' }
-      if (doc.expiresAt < Date.now()) return { ok: false, message: '聚会已过期' }
-      const memberId = getViewerMemberId(doc, OPENID)
-      if (!memberId) return { ok: false, message: '请先加入聚会' }
-      if (!(doc.room.venues || []).some((venue) => venue.id === venueId)) return { ok: false, message: '地点不存在' }
-      const votes = Object.assign({}, doc.room.votes || {})
-      const currentVotes = votes[venueId] || []
-      votes[venueId] = currentVotes.indexOf(memberId) >= 0
-        ? currentVotes.filter((id) => id !== memberId)
-        : currentVotes.concat(memberId)
-      const room = Object.assign({}, doc.room, { cloudId: code, votes })
-      await db.collection(COLLECTION).doc(doc._id).update({ data: { room, updatedAt: Date.now() } })
-      await publishSignals(doc.signals)
-      return { ok: true, code, room, viewerMemberId: memberId, isOwner: doc.owner === OPENID, signalId: (doc.signals || {})[OPENID] || '' }
+      const result = await db.runTransaction(async (transaction) => {
+        const current = (await transaction.collection(COLLECTION).doc(doc._id).get()).data
+        if (!current) throw new Error('聚会不存在')
+        if (current.expiresAt < Date.now()) throw new Error('聚会已过期')
+        const memberId = getViewerMemberId(current, OPENID)
+        if (!memberId) throw new Error('请先加入聚会')
+        if (!(current.room.venues || []).some((venue) => venue.id === venueId)) throw new Error('地点不存在')
+        const votes = Object.assign({}, current.room.votes || {})
+        const currentVotes = votes[venueId] || []
+        votes[venueId] = currentVotes.indexOf(memberId) >= 0
+          ? currentVotes.filter((id) => id !== memberId)
+          : currentVotes.concat(memberId)
+        const room = Object.assign({}, current.room, { cloudId: code, votes })
+        await transaction.collection(COLLECTION).doc(doc._id).update({ data: { room, updatedAt: Date.now() } })
+        return { room, memberId, doc: current }
+      }, 3)
+      await publishSignals(result.doc.signals)
+      return { ok: true, code, room: result.room, viewerMemberId: result.memberId, isOwner: result.doc.owner === OPENID,
+        signalId: (result.doc.signals || {})[OPENID] || '' }
     }
 
     if (action === 'setVenues') {
       const code = String(event.code || '').toUpperCase()
       const doc = CODE_PATTERN.test(code) ? await findRoom(code) : null
       if (!doc) return { ok: false, message: '聚会不存在' }
-      if (doc.expiresAt < Date.now()) return { ok: false, message: '聚会已过期' }
-      if (!getViewerMemberId(doc, OPENID)) return { ok: false, message: '请先加入聚会' }
       if (!Array.isArray(event.venues) || event.venues.length > 100) return { ok: false, message: '地点数据不合法' }
-      const room = Object.assign({}, doc.room, {
-        cloudId: code,
-        venues: event.venues,
-        venueSource: event.venueSource || null,
-        routeMatrix: event.routeMatrix && typeof event.routeMatrix === 'object' ? event.routeMatrix : {},
-        venueSearchAt: Date.now()
-      })
-      await db.collection(COLLECTION).doc(doc._id).update({ data: { room, updatedAt: Date.now() } })
-      await publishSignals(doc.signals)
-      return { ok: true, code, room, viewerMemberId: getViewerMemberId(doc, OPENID), isOwner: doc.owner === OPENID, signalId: (doc.signals || {})[OPENID] || '' }
+      const result = await db.runTransaction(async (transaction) => {
+        const current = (await transaction.collection(COLLECTION).doc(doc._id).get()).data
+        if (!current) throw new Error('聚会不存在')
+        if (current.expiresAt < Date.now()) throw new Error('聚会已过期')
+        const memberId = getViewerMemberId(current, OPENID)
+        if (!memberId) throw new Error('请先加入聚会')
+        const room = Object.assign({}, current.room, {
+          cloudId: code,
+          venues: event.venues,
+          venueSource: event.venueSource || null,
+          routeMatrix: event.routeMatrix && typeof event.routeMatrix === 'object' ? event.routeMatrix : {},
+          venueSearchAt: Date.now()
+        })
+        await transaction.collection(COLLECTION).doc(doc._id).update({ data: { room, updatedAt: Date.now() } })
+        return { room, memberId, doc: current }
+      }, 3)
+      await publishSignals(result.doc.signals)
+      return { ok: true, code, room: result.room, viewerMemberId: result.memberId, isOwner: result.doc.owner === OPENID,
+        signalId: (result.doc.signals || {})[OPENID] || '' }
     }
 
     if (action === 'leave') {
