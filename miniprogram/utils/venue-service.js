@@ -7,7 +7,7 @@ function getSearchSource() {
   }
 }
 
-function getNearbyVenues(origin, category, meetingDate, meetingTime) {
+function getNearbyVenues(origins, category, meetingDate, meetingTime) {
   return new Promise((resolve, reject) => {
     if (!wx.cloud || !wx.cloud.callFunction) {
       reject(new Error('云开发不可用，无法搜索附近地点'))
@@ -15,7 +15,7 @@ function getNearbyVenues(origin, category, meetingDate, meetingTime) {
     }
     wx.cloud.callFunction({
       name: 'venueService',
-      data: { origin, category: category || 'all', meetingDate, meetingTime },
+      data: { origins, category: category || 'all', meetingDate, meetingTime },
       success: (response) => {
         const result = response.result || {}
         if (!result.ok) {

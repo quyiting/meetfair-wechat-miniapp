@@ -1,6 +1,6 @@
 const { createRoom, cloudCreateRoom } = require('../../utils/store')
 const { getNearbyVenues, getRouteMatrix, getSearchSource } = require('../../utils/venue-service')
-const { midpoint, recommendVenues } = require('../../utils/recommend')
+const { candidateOrigins, routeCandidates } = require('../../utils/recommend')
 
 const categories = [
   { id: 'food', icon: '🍜', label: '吃饭' },
@@ -147,10 +147,10 @@ Page({
       wx.showToast({ title: `请先设置「${memberWithoutLocation.name}」的位置`, icon: 'none' })
       return
     }
-    const meetingPoint = midpoint(members)
+    const searchOrigins = candidateOrigins(members)
     this.setData({ creating: true })
     wx.showLoading({ title: '正在搜索附近地点' })
-    getNearbyVenues(meetingPoint, this.data.activeCategory, this.data.meetingDate, this.data.meetingTime).then((searchResult) => {
+    getNearbyVenues(searchOrigins, this.data.activeCategory, this.data.meetingDate, this.data.meetingTime).then((searchResult) => {
       const room = {
         id: `room-${Date.now()}`,
         title,
@@ -167,8 +167,7 @@ Page({
         votes: {},
         createdAt: Date.now()
       }
-      const routeCandidates = recommendVenues(room, 'all').slice(0, 3)
-      return getRouteMatrix(members, routeCandidates, room.meetingDate, room.meetingTime).then((routeResult) => {
+      return getRouteMatrix(members, routeCandidates(room), room.meetingDate, room.meetingTime).then((routeResult) => {
         room.routeMatrix = routeResult.routeMatrix || {}
         createRoom(room)
         return cloudCreateRoom(room)

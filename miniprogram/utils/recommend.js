@@ -21,6 +21,22 @@ function midpoint(members) {
   }), { latitude: 0, longitude: 0 })
 }
 
+function candidateOrigins(members) {
+  const center = midpoint(members)
+  if (members.length < 2) return [center]
+  let pair = [members[0], members[1]]
+  let spread = 0
+  members.forEach((first) => members.forEach((second) => {
+    const distance = distanceKm(first, second)
+    if (distance > spread) { spread = distance; pair = [first, second] }
+  }))
+  if (spread < 5) return [center]
+  return [center].concat(pair.map((member) => ({
+    latitude: (center.latitude + member.latitude) / 2,
+    longitude: (center.longitude + member.longitude) / 2
+  })))
+}
+
 const SPEEDS = { transit: 19, driving: 25, walking: 4.5, bicycle: 12 }
 const FIXED_MINUTES = { transit: 10, driving: 5, walking: 0, bicycle: 0 }
 
@@ -110,4 +126,18 @@ function recommendVenues(room, category, goal = 'max') {
   })
 }
 
-module.exports = { distanceKm, midpoint, estimateMinutes, recommendVenues }
+function routeCandidates(room) {
+  const ranked = recommendVenues(room, 'all')
+  const chosen = []
+  const categories = ['food', 'cinema', 'coffee', 'fun']
+  categories.forEach((category) => {
+    const first = ranked.find((venue) => venue.category === category)
+    if (first) chosen.push(first)
+  })
+  ranked.forEach((venue) => {
+    if (chosen.length < 6 && !chosen.some((item) => item.id === venue.id)) chosen.push(venue)
+  })
+  return chosen
+}
+
+module.exports = { distanceKm, midpoint, candidateOrigins, estimateMinutes, recommendVenues, routeCandidates }

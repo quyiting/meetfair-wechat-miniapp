@@ -83,19 +83,20 @@ function toTencentVenue(result, category) {
     providerId: result.id || '', name: result.title || '未命名地点', category,
     address: result.address || (result.ad_info && result.ad_info.district) || '地址信息暂缺',
     latitude: Number(location.lat), longitude: Number(location.lng), rating: null, price: null, open: true,
+    openingText: '营业时间未知',
     highlight: result.tel ? '电话 ' + result.tel : (result.category || '腾讯位置服务地点数据'),
     distanceMeters: Number(result._distance || 0), source: 'tencent'
   }
 }
 
-async function searchTencent(origin, category) {
+async function searchTencent(origin, category, meeting, pageSize = PAGE_SIZE) {
   const key = process.env.QQ_MAP_KEY
   const sk = process.env.QQ_MAP_SK || ''
   if (!key) throw new Error('云函数未配置 QQ_MAP_KEY')
   const path = '/ws/place/v1/search'
   const params = {
     boundary: 'nearby(' + origin.latitude + ',' + origin.longitude + ',' + SEARCH_RADIUS + ')',
-    keyword: CATEGORY_QUERIES[category], page_size: PAGE_SIZE, page_index: 1, orderby: '_distance', key
+    keyword: CATEGORY_QUERIES[category], page_size: pageSize, page_index: 1, orderby: '_distance', key
   }
   if (sk) params.sig = md5(path + '?' + sortedQuery(params) + sk)
   const response = await requestJson('apis.map.qq.com', path, params)
@@ -123,14 +124,14 @@ function toAmapVenue(poi, category, meeting) {
   }
 }
 
-async function searchAmap(origin, category, meeting) {
+async function searchAmap(origin, category, meeting, pageSize = PAGE_SIZE) {
   const key = process.env.AMAP_KEY
   const sk = process.env.AMAP_SK || ''
   if (!key) throw new Error('云函数未配置 AMAP_KEY')
   const path = '/v5/place/around'
   const params = {
     key, location: origin.longitude + ',' + origin.latitude, types: AMAP_CATEGORY_TYPES[category],
-    radius: SEARCH_RADIUS, page_size: PAGE_SIZE, page_num: 1, show_fields: 'business', sortrule: 'distance'
+    radius: SEARCH_RADIUS, page_size: pageSize, page_num: 1, show_fields: 'business', sortrule: 'distance'
   }
   if (sk) params.sig = md5(sortedQuery(params) + sk)
   let response = await requestJson('restapi.amap.com', path, params)
@@ -138,7 +139,7 @@ async function searchAmap(origin, category, meeting) {
   if (response.statusCode !== 200 || payload.status !== '1') {
     const oldPath = '/v3/place/around'
     const oldParams = { key, location: params.location, types: params.types, radius: SEARCH_RADIUS,
-      offset: PAGE_SIZE, page: 1, extensions: 'all', sortrule: 'distance' }
+      offset: pageSize, page: 1, extensions: 'all', sortrule: 'distance' }
     if (sk) oldParams.sig = md5(sortedQuery(oldParams) + sk)
     response = await requestJson('restapi.amap.com', oldPath, oldParams)
     payload = response.data || {}
@@ -195,7 +196,7 @@ async function getAmapRoute(member, venue, meetingDate, meetingTime) {
 async function getRouteMatrix(event) {
   if (!process.env.AMAP_KEY) return { ok: true, available: false, routeMatrix: {} }
   const members = Array.isArray(event.members) ? event.members.slice(0, 8) : []
-  const venues = Array.isArray(event.venues) ? event.venues.slice(0, 3) : []
+  const venues = Array.isArray(event.venues) ? event.venues.slice(0, 6) : []
   if (!members.length || !venues.length) return { ok: false, message: '路线规划参数不完整' }
   const pairs = []
   venues.forEach((venue) => members.forEach((member) => pairs.push({ member, venue })))
@@ -218,11 +219,10 @@ async function getRouteMatrix(event) {
 exports.main = async (event) => {
   try {
     if (event.action === 'routes') return await getRouteMatrix(event)
-    const origin = event.origin || {}
-    const latitude = Number(origin.latitude)
-    const longitude = Number(origin.longitude)
-    if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90 ||
-      !Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+    const origins = Array.isArray(event.origins) ? event.origins : [event.origin || {}]
+    if (!origins.length || origins.length > 3 || origins.some((origin) =>
+      !Number.isFinite(Number(origin.latitude)) || Number(origin.latitude) < -90 || Number(origin.latitude) > 90 ||
+      !Number.isFinite(Number(origin.longitude)) || Number(origin.longitude) < -180 || Number(origin.longitude) > 180)) {
       return { ok: false, message: '搜索中心坐标不合法' }
     }
     const categories = event.category === 'all' ? CATEGORY_KEYS : [event.category]
@@ -230,8 +230,15 @@ exports.main = async (event) => {
     const provider = process.env.AMAP_KEY ? 'amap' : 'tencent'
     const search = provider === 'amap' ? searchAmap : searchTencent
     const meeting = { date: String(event.meetingDate || ''), time: String(event.meetingTime || '') }
-    const groups = await Promise.all(categories.map((category) => search({ latitude, longitude }, category, meeting)))
-    const venues = [].concat.apply([], groups).filter((venue) => Number.isFinite(venue.latitude) && Number.isFinite(venue.longitude))
+    const venuesById = new Map()
+    for (const origin of origins) {
+      const pageSize = origins.length > 1 ? 8 : PAGE_SIZE
+      const groups = await Promise.all(categories.map((category) => search(origin, category, meeting, pageSize)))
+      groups.flat().forEach((venue) => {
+        if (Number.isFinite(venue.latitude) && Number.isFinite(venue.longitude) && !venuesById.has(venue.id)) venuesById.set(venue.id, venue)
+      })
+    }
+    const venues = Array.from(venuesById.values()).slice(0, 100)
     return {
       ok: true, venues,
       source: {

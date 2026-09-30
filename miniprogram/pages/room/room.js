@@ -1,5 +1,5 @@
 const { getRoom, updateRoom, encodeRoom, addMemberToRoom, cloudGetRoom, cloudIssueClaimCode, cloudToggleVote, cloudSetVenues, cloudDeleteRoom } = require('../../utils/store')
-const { midpoint, recommendVenues } = require('../../utils/recommend')
+const { midpoint, candidateOrigins, routeCandidates, recommendVenues } = require('../../utils/recommend')
 const { CATEGORY_LABELS, TRANSPORT_LABELS } = require('../../utils/constants')
 const { getNearbyVenues, getRouteMatrix } = require('../../utils/venue-service')
 
@@ -131,16 +131,15 @@ Page({
   },
   refreshNearby() {
     const room = getRoom(this.roomId)
-    const point = midpoint(room.members)
+    const origins = candidateOrigins(room.members)
     wx.showLoading({ title: '搜索附近地点' })
     // 始终搜索全部类别，缓存后按标签筛选
-    getNearbyVenues(point, 'all', room.meetingDate, room.meetingTime).then((searchResult) => {
+    getNearbyVenues(origins, 'all', room.meetingDate, room.meetingTime).then((searchResult) => {
       room.venues = searchResult.venues
       room.venueSource = searchResult.source
       room.venueSearchAt = Date.now()
       room.routeMatrix = {}
-      const routeCandidates = recommendVenues(room, 'all').slice(0, 3)
-      return getRouteMatrix(room.members, routeCandidates, room.meetingDate, room.meetingTime).then((routeResult) => {
+      return getRouteMatrix(room.members, routeCandidates(room), room.meetingDate, room.meetingTime).then((routeResult) => {
         room.routeMatrix = routeResult.routeMatrix || {}
         return room.cloudId
           ? cloudSetVenues(room, searchResult.venues, searchResult.source, room.routeMatrix)
