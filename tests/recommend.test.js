@@ -32,4 +32,18 @@ assert.strictEqual(routed[0].maxMinutes, 16)
 assert.strictEqual(routed[0].averageMinutes, 14)
 assert.strictEqual(routed[0].routeStatus, '真实路线')
 
+const goalVenues = ['fair', 'fast', 'equal'].map((id) => Object.assign({}, venues[0], { id }))
+const goalRoom = {
+  category: 'food', transport: 'mixed', members, venues: goalVenues,
+  routeMatrix: {
+    fair: { a: { minutes: 30 }, b: { minutes: 31 } },
+    fast: { a: { minutes: 15 }, b: { minutes: 40 } },
+    equal: { a: { minutes: 40 }, b: { minutes: 40 } }
+  }
+}
+assert.strictEqual(recommendVenues(goalRoom, 'all')[0].id, 'fair')
+assert.strictEqual(recommendVenues(goalRoom, 'all', 'total')[0].id, 'fast')
+assert.strictEqual(recommendVenues(goalRoom, 'all', 'equal')[0].id, 'equal')
+assert.strictEqual(recommendVenues(goalRoom, 'all', 'equal')[0].spreadMinutes, 0)
+
 console.log('recommend tests: ok')

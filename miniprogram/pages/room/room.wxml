@@ -19,13 +19,14 @@
   <view class="page-shell result-shell">
     <view class="fairness-card card">
       <view class="fairness-icon">⌘</view>
-      <view class="fairness-text"><view class="fairness-title">已经找到相对公平的区域</view><view class="fairness-copy">优先压低最远成员的通勤时间，再结合平均路程排序。下拉页面可同步朋友的加入和投票。</view></view>
+      <view class="fairness-text"><view class="fairness-title">选择这次聚会的推荐目标</view><view class="fairness-copy">{{goalDescription}}。下拉页面可同步朋友的加入和投票。</view></view>
     </view>
 
     <map class="meeting-map" latitude="{{point.latitude}}" longitude="{{point.longitude}}" scale="13" markers="{{markers}}" show-location="false"></map>
     <view class="map-caption"><text>●</text> 橙色为朋友出发点，蓝色为当前推荐地点</view>
 
     <view class="category-tabs"><view wx:for="{{categories}}" wx:key="id" class="category-tab {{activeCategory === item.id ? 'tab-active' : ''}}" bindtap="selectCategory" data-id="{{item.id}}">{{item.label}}</view></view>
+    <view class="goal-tabs"><view wx:for="{{goals}}" wx:key="id" class="category-tab {{activeGoal === item.id ? 'tab-active' : ''}}" bindtap="selectGoal" data-id="{{item.id}}">{{item.label}}</view></view>
     <view class="list-heading"><view><view class="section-title">推荐地点</view><view class="section-subtitle">{{room.venueSourceLabel}}</view></view><button class="search-nearby" bindtap="refreshNearby">更新附近</button></view>
 
     <view wx:if="{{recommendations.length}}" class="venue-list">
@@ -36,7 +37,7 @@
           <view class="venue-info">{{item.metaText}}</view>
           <view class="venue-note">{{item.highlight}}</view>
           <view wx:if="{{item.budgetStatus}}" class="budget-fit">{{item.budgetStatus}}</view>
-          <view class="travel-summary">最远 <text>{{item.maxMinutes}} 分钟</text>　平均 {{item.averageMinutes}} 分钟 · {{item.routeStatus}}</view>
+          <view class="travel-summary">最远 <text>{{item.maxMinutes}} 分钟</text>　平均 {{item.averageMinutes}} 分钟 · 差距 {{item.spreadMinutes}} 分钟 · {{item.routeStatus}}</view>
         </view>
         <button class="vote-button {{item.hasVoted ? 'voted' : ''}}" catchtap="toggleVote" data-id="{{item.id}}">♥ {{item.voteCount}}</button>
       </view>

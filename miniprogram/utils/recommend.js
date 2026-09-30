@@ -46,7 +46,7 @@ function clampScore(value) {
   return Math.max(0, Math.min(100, value))
 }
 
-function recommendVenues(room, category) {
+function recommendVenues(room, category, goal = 'max') {
   const venues = category === 'all' ? room.venues : room.venues.filter((venue) => venue.category === category)
   return venues.map((venue) => {
     const travel = room.members.map((member) => {
@@ -65,7 +65,9 @@ function recommendVenues(room, category) {
       }
     })
     const maxMinutes = Math.max.apply(null, travel.map((item) => item.minutes))
-    const averageMinutes = Math.round(travel.reduce((sum, item) => sum + item.minutes, 0) / travel.length)
+    const totalMinutes = travel.reduce((sum, item) => sum + item.minutes, 0)
+    const spreadMinutes = maxMinutes - Math.min.apply(null, travel.map((item) => item.minutes))
+    const averageMinutes = Math.round(totalMinutes / travel.length)
     const categoryBonus = venue.category === room.category ? CATEGORY_BONUS : 0
     const rating = Number(venue.rating) || 0
     const price = Number(venue.price) || 0
@@ -90,6 +92,8 @@ function recommendVenues(room, category) {
     return Object.assign({}, venue, {
       travel,
       maxMinutes,
+      totalMinutes,
+      spreadMinutes,
       averageMinutes,
       rawScore,
       score,
@@ -99,7 +103,10 @@ function recommendVenues(room, category) {
       budgetStatus,
       routeStatus: travel.every((item) => !item.isEstimated) ? '真实路线' : '含估算路线'
     })
-  }).sort((a, b) => b.rawScore - a.rawScore)
+  }).sort((a, b) => {
+    const metric = goal === 'total' ? 'totalMinutes' : goal === 'equal' ? 'spreadMinutes' : 'maxMinutes'
+    return a[metric] - b[metric] || b.rawScore - a.rawScore
+  })
 }
 
 module.exports = { distanceKm, midpoint, estimateMinutes, recommendVenues }

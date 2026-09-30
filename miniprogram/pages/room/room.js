@@ -20,6 +20,13 @@ Page({
     point: null,
     recommendations: [],
     activeCategory: 'all',
+    activeGoal: 'max',
+    goals: [
+      { id: 'max', label: '照顾最远的人' },
+      { id: 'total', label: '全员总时间最短' },
+      { id: 'equal', label: '大家时间最接近' }
+    ],
+    goalDescription: '优先让最远的一位朋友少走路',
     selectedVenueId: '',
     markers: [],
     categories: [
@@ -71,7 +78,7 @@ Page({
     }
     const { venues, venueSource } = room
     const point = midpoint(room.members)
-    const recommendations = recommendVenues(room, this.data.activeCategory).map((venue) => {
+    const recommendations = recommendVenues(room, this.data.activeCategory, this.data.activeGoal).map((venue) => {
       const votes = (room.votes && room.votes[venue.id]) || []
       return Object.assign({}, venue, { voteCount: votes.length, hasVoted: votes.indexOf(room.currentMemberId) >= 0 })
     })
@@ -106,6 +113,16 @@ Page({
   },
   selectCategory(event) {
     this.setData({ activeCategory: event.currentTarget.dataset.id, selectedVenueId: '' }, () => this.loadRoom(true))
+  },
+  selectGoal(event) {
+    const activeGoal = event.currentTarget.dataset.id
+    const descriptions = {
+      max: '优先让最远的一位朋友少走路',
+      total: '优先减少所有人的总通勤时间',
+      equal: '优先缩小大家通勤时间的差距'
+    }
+    if (!descriptions[activeGoal]) return
+    this.setData({ activeGoal, goalDescription: descriptions[activeGoal], selectedVenueId: '' }, () => this.loadRoom(true))
   },
   refreshNearby() {
     const room = getRoom(this.roomId)
