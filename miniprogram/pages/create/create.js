@@ -187,6 +187,8 @@ Page({
         venues: searchResult.venues,
         venueSource: searchResult.source,
         votes: {},
+        memberRevision: 0,
+        venueMemberRevision: 0,
         createdAt: Date.now()
       }
       return getRouteMatrix(members, routeCandidates(room), room.meetingDate, room.meetingTime).then((routeResult) => {

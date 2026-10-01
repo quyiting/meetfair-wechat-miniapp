@@ -60,6 +60,8 @@ async function run() {
   const created = await roomService.main({ action: 'create', room })
   assert.strictEqual(created.ok, true)
   const code = created.code
+  assert.strictEqual(created.room.memberRevision, 0)
+  assert.strictEqual(created.room.venueMemberRevision, 0)
   assert(created.room.expiresAt > Date.now() + 29 * 24 * 3600000)
   assert.strictEqual(signals[created.signalId].openid, 'owner')
 
@@ -91,11 +93,13 @@ async function run() {
   assert.strictEqual(wrong.ok, false)
   const sameName = await roomService.main({ action: 'join', code, member: member('', '小李') })
   assert.strictEqual(sameName.ok, true)
+  assert.strictEqual(sameName.room.memberRevision, 1)
   assert.notStrictEqual(sameName.viewerMemberId, 'guest-seat')
 
   openid = 'invitee'
   const joined = await roomService.main({ action: 'join', code, claimCode: issued.claimCode, member: member('', '小李') })
   assert.strictEqual(joined.ok, true)
+  assert.strictEqual(joined.room.memberRevision, 2)
   assert.strictEqual(joined.viewerMemberId, 'guest-seat')
   assert.strictEqual(signals[joined.signalId].openid, 'invitee')
   const joinedView = await roomService.main({ action: 'get', code })
@@ -106,6 +110,7 @@ async function run() {
   assert.notStrictEqual(signals[created.signalId].version, previousVersion)
   const left = await roomService.main({ action: 'leave', code })
   assert.strictEqual(left.ok, true)
+  assert.strictEqual(docs[0].room.memberRevision, 3)
   assert(!docs[0].room.members.some((item) => item.id === 'guest-seat'))
   assert.deepStrictEqual(docs[0].room.votes['venue-1'], [])
   assert.strictEqual(signals[joined.signalId], undefined)

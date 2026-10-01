@@ -20,6 +20,8 @@ Page({
     room: null,
     point: null,
     recommendations: [],
+    recommendationsStale: false,
+    refreshingNearby: false,
     activeCategory: 'all',
     activeGoal: 'max',
     goals: [
@@ -135,6 +137,7 @@ Page({
       this.setData({
         room: Object.assign({}, room, { categoryLabel: CATEGORY_LABELS[room.category] }),
         point: null, recommendations: [], selectedVenueId: '', markers: [],
+        recommendationsStale: false,
         isMember: false, claimableMembers: [], codePreview: room.cloudId,
         codeLabel: '聚会码 · 6 位'
       })
@@ -149,6 +152,7 @@ Page({
     const selectedVenueId = this.data.selectedVenueId || (recommendations[0] && recommendations[0].id) || ''
     const markers = this.getMarkers(room, recommendations, selectedVenueId)
     const isMember = Boolean(room.currentMemberId && room.members.some((m) => m.id === room.currentMemberId))
+    const recommendationsStale = (room.memberRevision || 0) !== (room.venueMemberRevision || 0)
     const claimableMembers = room.currentUserIsOwner
       ? room.members.filter((member) => (room.claimableMemberIds || []).indexOf(member.id) >= 0)
       : []
@@ -160,6 +164,7 @@ Page({
       }),
       point,
       recommendations,
+      recommendationsStale,
       selectedVenueId,
       markers,
       isMember,
@@ -170,6 +175,9 @@ Page({
     })
     // 如果没有地点数据，自动搜索
     if (!venues || !venues.length) {
+      this.refreshNearby()
+    } else if (recommendationsStale && room.cloudId && room.currentUserIsOwner && !localOnly && this.autoRefreshRevision !== room.memberRevision) {
+      this.autoRefreshRevision = room.memberRevision
       this.refreshNearby()
     }
   },
@@ -193,8 +201,11 @@ Page({
     this.setData({ activeGoal, goalDescription: descriptions[activeGoal], selectedVenueId: '' }, () => this.loadRoom(true))
   },
   refreshNearby() {
+    if (this.data.refreshingNearby) return
     const room = getRoom(this.roomId)
+    if (!room || !room.members || !room.members.length) return
     const origins = candidateOrigins(room.members)
+    this.setData({ refreshingNearby: true })
     wx.showLoading({ title: '搜索附近地点' })
     // 始终搜索全部类别，缓存后按标签筛选
     getNearbyVenues(origins, 'all', room.meetingDate, room.meetingTime).then((searchResult) => {
@@ -204,16 +215,19 @@ Page({
       room.routeMatrix = {}
       return getRouteMatrix(room.members, routeCandidates(room), room.meetingDate, room.meetingTime).then((routeResult) => {
         room.routeMatrix = routeResult.routeMatrix || {}
+        if (!room.cloudId) room.venueMemberRevision = room.memberRevision || 0
         return room.cloudId
           ? cloudSetVenues(room, searchResult.venues, searchResult.source, room.routeMatrix)
           : Promise.resolve(updateRoom(room))
       }).then(() => {
         wx.hideLoading()
+        this.setData({ refreshingNearby: false })
         this.loadRoom(true)
         wx.showToast({ title: '已更新附近地点', icon: 'none' })
       })
     }).catch((error) => {
       wx.hideLoading()
+      this.setData({ refreshingNearby: false })
       wx.showToast({ title: error.message || '附近搜索失败，请稍后重试', icon: 'none' })
     })
   },
@@ -359,7 +373,10 @@ Page({
     addMemberToRoom(this.roomId, member, this.data.joinClaimCode).then(() => {
       this.setData({ joinSubmitting: false })
       this.closeJoinModal()
-      this.loadRoom(true).then(() => this.startWatch())
+      this.loadRoom(true).then(() => {
+        this.startWatch()
+        this.refreshNearby()
+      })
       wx.showToast({ title: '已成功加入聚会', icon: 'success' })
     }).catch((error) => {
       this.setData({ joinSubmitting: false })

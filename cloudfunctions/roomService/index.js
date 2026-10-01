@@ -136,6 +136,8 @@ async function createRoom(room, openid) {
       venues: room.venues,
       venueSource: room.venueSource || null,
       routeMatrix: room.routeMatrix && typeof room.routeMatrix === 'object' ? room.routeMatrix : {},
+      memberRevision: 0,
+      venueMemberRevision: 0,
       votes: {},
       createdAt: Number(room.createdAt) || Date.now()
     }
@@ -249,6 +251,7 @@ exports.main = async (event) => {
         const member = normalizeMember(event.member, memberId)
         const room = Object.assign({}, current.room, {
           cloudId: code,
+          memberRevision: (current.room.memberRevision || 0) + 1,
           members: claimableMember
             ? current.room.members.map((item) => item.id === memberId ? member : item)
             : current.room.members.concat(member)
@@ -304,11 +307,13 @@ exports.main = async (event) => {
         if (current.expiresAt < Date.now()) throw new Error('聚会已过期')
         const memberId = getViewerMemberId(current, OPENID)
         if (!memberId) throw new Error('请先加入聚会')
+        if (event.memberRevision !== (current.room.memberRevision || 0)) throw new Error('成员已变化，请重新搜索地点')
         const room = Object.assign({}, current.room, {
           cloudId: code,
           venues: event.venues,
           venueSource: event.venueSource || null,
           routeMatrix: event.routeMatrix && typeof event.routeMatrix === 'object' ? event.routeMatrix : {},
+          venueMemberRevision: current.room.memberRevision || 0,
           venueSearchAt: Date.now()
         })
         await transaction.collection(COLLECTION).doc(doc._id).update({ data: { room, updatedAt: Date.now() } })
@@ -340,6 +345,7 @@ exports.main = async (event) => {
           routeMatrix[venueId] = routes
         })
         const room = Object.assign({}, current.room, {
+          memberRevision: (current.room.memberRevision || 0) + 1,
           members: current.room.members.filter((member) => member.id !== memberId), votes, routeMatrix
         })
         const memberBindings = (current.memberBindings || []).filter((item) => item.openid !== OPENID)

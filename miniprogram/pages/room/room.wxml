@@ -31,6 +31,11 @@
       <view class="fairness-icon">⌘</view>
       <view class="fairness-text"><view class="fairness-title">选择这次聚会的推荐目标</view><view class="fairness-copy">{{goalDescription}}。下拉页面可同步朋友的加入和投票。</view></view>
     </view>
+    <view wx:if="{{recommendationsStale}}" class="empty-card card">
+      <view class="empty-title">成员信息已变化，推荐待更新</view>
+      <view class="empty-copy">当前地点和路线基于旧成员信息，更新后再比较通勤时间。</view>
+      <button class="empty-action" disabled="{{refreshingNearby}}" bindtap="refreshNearby">{{refreshingNearby ? '正在更新…' : '更新推荐'}}</button>
+    </view>
 
     <map class="meeting-map" latitude="{{point.latitude}}" longitude="{{point.longitude}}" scale="13" markers="{{markers}}" show-location="false"></map>
     <view class="map-caption"><text>●</text> 橙色为朋友出发点，蓝色为当前推荐地点</view>

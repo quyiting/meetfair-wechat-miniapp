@@ -7,7 +7,7 @@ const roomDoc = {
   memberBindings: [{ memberId: 'member-1', openid: 'owner' }], signals: {},
   room: {
     id: 'room-1', cloudId: 'ABC234', members: [{ id: 'member-1' }],
-    venues: [{ id: 'venue-1' }], votes: {}, routeMatrix: {}
+    venues: [{ id: 'venue-1' }], votes: {}, routeMatrix: {}, memberRevision: 1, venueMemberRevision: 1
   }
 }
 const collection = {
@@ -51,12 +51,19 @@ Module._load = originalLoad
 async function run() {
   const [vote, refresh] = await Promise.all([
     roomService.main({ action: 'toggleVote', code: 'ABC234', venueId: 'venue-1' }),
-    roomService.main({ action: 'setVenues', code: 'ABC234', venues: [{ id: 'venue-1' }, { id: 'venue-2' }] })
+    roomService.main({ action: 'setVenues', code: 'ABC234', memberRevision: 1, venues: [{ id: 'venue-1' }, { id: 'venue-2' }] })
   ])
   assert.strictEqual(vote.ok, true)
   assert.strictEqual(refresh.ok, true)
   assert.deepStrictEqual(roomDoc.room.votes['venue-1'], ['member-1'], '刷新地点不能覆盖刚提交的投票')
   assert.deepStrictEqual(roomDoc.room.venues.map((item) => item.id), ['venue-1', 'venue-2'])
+  roomDoc.room.memberRevision = 2
+  const stale = await roomService.main({ action: 'setVenues', code: 'ABC234', memberRevision: 1, venues: [{ id: 'stale' }] })
+  assert.strictEqual(stale.ok, false, '成员变更前的搜索结果不能覆盖新房间')
+  assert.deepStrictEqual(roomDoc.room.venues.map((item) => item.id), ['venue-1', 'venue-2'])
+  const current = await roomService.main({ action: 'setVenues', code: 'ABC234', memberRevision: 2, venues: [{ id: 'venue-3' }] })
+  assert.strictEqual(current.ok, true)
+  assert.strictEqual(roomDoc.room.venueMemberRevision, 2)
   console.log('room concurrency tests: ok')
 }
 

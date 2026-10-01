@@ -128,6 +128,7 @@ function addMemberToRoom(roomId, member, claimCode) {
   }
   member.id = member.id || `local-member-${Date.now()}`
   room.members.push(member)
+  room.memberRevision = (room.memberRevision || 0) + 1
   room.currentMemberId = member.id
   updateRoom(room)
   return Promise.resolve(room)
@@ -154,7 +155,7 @@ function cloudToggleVote(room, venueId) {
 
 function cloudSetVenues(room, venues, venueSource, routeMatrix) {
   if (!room.cloudId) return Promise.resolve(null)
-  return callRoomService('setVenues', { code: room.cloudId, venues, venueSource, routeMatrix }).then((result) => {
+  return callRoomService('setVenues', { code: room.cloudId, memberRevision: room.memberRevision || 0, venues, venueSource, routeMatrix }).then((result) => {
     const syncedRoom = Object.assign({}, result.room, {
       cloudId: result.code,
       currentMemberId: result.viewerMemberId || room.currentMemberId || '',
