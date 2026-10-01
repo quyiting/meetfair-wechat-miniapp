@@ -20,8 +20,8 @@ const collection = {
   where(query) {
     return {
       limit() { return this },
-      async get() { return { data: docs.filter((doc) => doc.code === query.code) } },
-      async count() { return { total: docs.filter((doc) => doc.code === query.code).length } }
+      async get() { return { data: docs.filter((doc) => Object.keys(query).every((key) => doc[key] === query[key])) } },
+      async count() { return { total: docs.filter((doc) => Object.keys(query).every((key) => doc[key] === query[key])).length } }
     }
   },
   async add({ data }) { docs.push(Object.assign({ _id: 'doc-' + (docs.length + 1) }, data)) },
@@ -60,6 +60,10 @@ async function run() {
   const created = await roomService.main({ action: 'create', room })
   assert.strictEqual(created.ok, true)
   const code = created.code
+  assert.strictEqual((await roomService.main({ action: 'get', code: 'BAD' })).code, 'INVALID_CODE')
+  const retried = await roomService.main({ action: 'create', room })
+  assert.strictEqual(retried.code, code, '创建响应丢失后的重试不应生成第二个云端房间')
+  assert.strictEqual(docs.length, 1)
   assert.strictEqual(created.room.memberRevision, 0)
   assert.strictEqual(created.room.venueMemberRevision, 0)
   assert(created.room.expiresAt > Date.now() + 29 * 24 * 3600000)
@@ -150,6 +154,7 @@ async function run() {
   failSignalRemoval = ''
   const expired = await roomService.main({ action: 'get', code: shortLived.code })
   assert.strictEqual(expired.message, '聚会已过期')
+  assert.strictEqual(expired.code, 'ROOM_EXPIRED')
   assert(!docs.includes(expiringDoc))
   assert.strictEqual(signals[shortLived.signalId], undefined)
   console.log('claim tests: ok')

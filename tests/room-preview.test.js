@@ -48,7 +48,7 @@ async function run() {
       success({ result: { ok: true, code: 'ABC234', room: joinedRoom, viewerMemberId: 'new', signalId: 'signal-1' } })
     }
   }
-  const { addMemberToRoom } = require('../miniprogram/utils/store')
+  const { addMemberToRoom, cloudCreateRoom } = require('../miniprogram/utils/store')
   await addMemberToRoom('room-preview', joinedRoom.members[1], '')
   await page.loadRoom(true)
   assert.strictEqual(page.data.isMember, true)
@@ -69,7 +69,12 @@ async function run() {
   })
   await cachedPage.loadRoom()
   assert.strictEqual(cachedPage.data.room, null, '云端校验失败时不能展示缓存的成员位置')
+  assert.match(cachedPage.data.loadError, /网络或云服务暂时不可用/)
   assert.deepStrictEqual(cachedPage.data.markers, [])
+  const localRoom = { id: 'local-room', currentUserIsOwner: true, members: [{ id: 'owner' }] }
+  stored = [localRoom]
+  assert.strictEqual(await cloudCreateRoom(localRoom), null)
+  assert.match(stored[0].syncError, /网络或云服务暂时不可用/)
   console.log('room preview tests: ok')
 }
 

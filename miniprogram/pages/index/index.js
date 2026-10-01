@@ -1,4 +1,4 @@
-const { getRooms, getRoom, createRoom, decodeRoom, cloudGetRoom } = require('../../utils/store')
+const { getRooms, getRoom, createRoom, decodeRoom, cloudGetRoom, cloudErrorText } = require('../../utils/store')
 const { CATEGORY_LABELS, TRANSPORT_LABELS } = require('../../utils/constants')
 
 // 6 位短码（云端聚会码）；更短的才可能是本地长码，用长度即可区分
@@ -59,11 +59,12 @@ Page({
     let room = null
     if (SHORT_CODE_PATTERN.test(raw.toUpperCase())) {
       wx.showLoading({ title: '正在查找聚会' })
-      room = await cloudGetRoom(raw)
+      let lookupError = null
+      room = await cloudGetRoom(raw, (error) => { lookupError = error })
       wx.hideLoading()
       if (!room) {
         this.setData({ joining: false })
-        wx.showToast({ title: '聚会码不存在，请检查后重试', icon: 'none' })
+        wx.showToast({ title: cloudErrorText(lookupError || {}), icon: 'none' })
         return
       }
     } else {

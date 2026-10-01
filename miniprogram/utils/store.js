@@ -58,13 +58,17 @@ function callRoomService(action, payload) {
       success: (res) => {
         const result = res.result || {}
         if (!result.ok) {
-          reject(new Error(result.message || '云服务返回异常'))
+          const error = new Error(result.message || '云服务返回异常')
+          error.code = result.code || 'CLOUD_ERROR'
+          reject(error)
           return
         }
         resolve(result)
       },
       fail: (err) => {
-        reject(new Error((err && err.errMsg) || '云函数调用失败'))
+        const error = new Error((err && err.errMsg) || '云函数调用失败')
+        error.code = /-501000|FunctionName parameter could not be found/i.test(error.message) ? 'FUNCTION_NOT_FOUND' : 'NETWORK_ERROR'
+        reject(error)
       }
     })
   })
@@ -84,11 +88,22 @@ function cloudCreateRoom(room) {
     return room
   }).catch((err) => {
     console.warn('[cloudCreateRoom] 失败，回退本地长码:', err.message)
+    room.syncError = cloudErrorText(err)
+    updateRoom(room)
     return null
   })
 }
 
-function cloudGetRoom(code) {
+function cloudErrorText(error) {
+  if (error.code === 'FUNCTION_NOT_FOUND') return '云函数未部署，请联系创建者检查云开发配置'
+  if (error.code === 'NETWORK_ERROR') return '网络或云服务暂时不可用，请稍后重试'
+  if (error.code === 'ROOM_NOT_FOUND') return '聚会码不存在，请检查后重试'
+  if (error.code === 'ROOM_EXPIRED') return '聚会已过期'
+  if (error.code === 'INVALID_CODE') return '聚会码格式不正确'
+  return error.message || '云服务暂时不可用，请稍后重试'
+}
+
+function cloudGetRoom(code, onError) {
   return callRoomService('get', { code }).then((result) => {
     console.log('[cloudGetRoom] 成功，短码:', result.code)
     return Object.assign({}, result.room, {
@@ -100,6 +115,7 @@ function cloudGetRoom(code) {
     })
   }).catch((err) => {
     console.warn('[cloudGetRoom] 失败:', err.message)
+    if (onError) onError(err)
     return null
   })
 }
@@ -421,6 +437,7 @@ module.exports = {
   decodeRoom,
   cloudCreateRoom,
   cloudGetRoom,
+  cloudErrorText,
   addMemberToRoom,
   updateMyMember,
   cloudIssueClaimCode,

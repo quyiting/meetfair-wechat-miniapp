@@ -1,3 +1,10 @@
+<view wx:if="{{loadError}}" class="page-shell">
+  <view class="empty-card card">
+    <view class="empty-title">无法打开聚会</view>
+    <view class="empty-copy">{{loadError}}</view>
+    <button class="empty-action" bindtap="retryLoadRoom">重新读取</button>
+  </view>
+</view>
 <view wx:if="{{room}}" class="room-page">
   <view class="room-hero">
     <view class="page-shell room-hero-inner">
@@ -19,6 +26,11 @@
   </view>
 
   <view class="page-shell result-shell">
+    <view wx:if="{{!room.cloudId && room.currentUserIsOwner}}" class="empty-card card">
+      <view class="empty-title">聚会仅保存在本机</view>
+      <view class="empty-copy">{{room.syncError || '云端尚未同步，朋友无法通过 6 位聚会码协作。'}}</view>
+      <button class="empty-action" disabled="{{syncingRoom}}" bindtap="retryCloudSync">{{syncingRoom ? '正在同步…' : '重试云端同步'}}</button>
+    </view>
     <block wx:if="{{room.preview}}">
       <view class="empty-card card">
         <view class="empty-title">加入后查看完整推荐</view>

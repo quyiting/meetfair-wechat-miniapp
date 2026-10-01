@@ -144,6 +144,7 @@ async function createRoom(room, openid) {
     await db.collection(COLLECTION).add({
       data: {
         code,
+        clientRoomId: openid + ':' + String(room.id).slice(0, 80),
         room: savedRoom,
         owner: openid,
         memberBindings: [{ memberId: ownerMemberId, openid }],
@@ -172,6 +173,15 @@ exports.main = async (event) => {
         return { ok: false, message: '聚会数据不合法' }
       }
       if (room.members.length > 8) return { ok: false, message: '成员最多 8 人' }
+      await ensureCollection(COLLECTION)
+      const clientRoomId = OPENID + ':' + String(room.id).slice(0, 80)
+      const existing = (await db.collection(COLLECTION).where({ clientRoomId }).limit(1).get()).data[0]
+      if (existing && existing.expiresAt > Date.now()) {
+        const viewerMemberId = getViewerMemberId(existing, OPENID)
+        return { ok: true, isOwner: true, code: existing.code, room: existing.room,
+          viewerMemberId, signalId: (existing.signals || {})[OPENID] || '',
+          claimableMemberIds: claimableMemberIds(existing) }
+      }
       const created = await createRoom(room, OPENID)
       return Object.assign({ ok: true, isOwner: true }, created)
     }
@@ -179,17 +189,17 @@ exports.main = async (event) => {
     if (action === 'get') {
       const code = String(event.code || '').toUpperCase()
       if (!CODE_PATTERN.test(code)) {
-        return { ok: false, message: '聚会码格式不正确' }
+        return { ok: false, code: 'INVALID_CODE', message: '聚会码格式不正确' }
       }
       const doc = await findRoom(code)
       if (!doc) {
-        return { ok: false, message: '聚会码不存在' }
+        return { ok: false, code: 'ROOM_NOT_FOUND', message: '聚会码不存在' }
       }
       const expiresAt = doc.expiresAt || ((doc.createdAt || Date.now()) + ROOM_TTL_MS)
       if (expiresAt < Date.now()) {
         await Promise.all(Object.values(doc.signals || {}).map((id) => db.collection(SIGNAL_COLLECTION).doc(id).remove()))
         await db.collection(COLLECTION).doc(doc._id).remove()
-        return { ok: false, message: '聚会已过期' }
+        return { ok: false, code: 'ROOM_EXPIRED', message: '聚会已过期' }
       }
       const viewerMemberId = getViewerMemberId(doc, OPENID)
       if (!viewerMemberId) {

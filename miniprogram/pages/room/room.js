@@ -1,4 +1,4 @@
-const { getRoom, updateRoom, encodeRoom, addMemberToRoom, updateMyMember, cloudGetRoom, cloudIssueClaimCode, cloudToggleVote, cloudSetVenues, cloudLeaveRoom, cloudDeleteRoom } = require('../../utils/store')
+const { getRoom, updateRoom, encodeRoom, addMemberToRoom, updateMyMember, cloudCreateRoom, cloudGetRoom, cloudErrorText, cloudIssueClaimCode, cloudToggleVote, cloudSetVenues, cloudLeaveRoom, cloudDeleteRoom } = require('../../utils/store')
 const { midpoint, candidateOrigins, routeCandidates, recommendVenues } = require('../../utils/recommend')
 const { prepareMemberLocation } = require('../../utils/privacy')
 const { CATEGORY_LABELS, TRANSPORT_LABELS } = require('../../utils/constants')
@@ -18,6 +18,8 @@ const SHORT_CODE_PATTERN = /^[23456789ABCDEFGHKMNPQRSTUVWXYZ]{6}$/
 Page({
   data: {
     room: null,
+    loadError: '',
+    syncingRoom: false,
     point: null,
     recommendations: [],
     recommendationsStale: false,
@@ -120,10 +122,11 @@ Page({
     let room = getRoom(this.roomId)
     const cloudCode = (room && room.cloudId) || (SHORT_CODE_PATTERN.test(String(this.roomId || '').toUpperCase()) ? this.roomId : '')
     if (cloudCode && !localOnly) {
-      this.setData({ room: null, point: null, recommendations: [], markers: [] })
-      const cloudRoom = await cloudGetRoom(cloudCode)
+      this.setData({ room: null, point: null, recommendations: [], markers: [], loadError: '' })
+      let lookupError = null
+      const cloudRoom = await cloudGetRoom(cloudCode, (error) => { lookupError = error })
       if (!cloudRoom) {
-        wx.showToast({ title: '暂无法验证聚会权限，请重试', icon: 'none' })
+        this.setData({ loadError: cloudErrorText(lookupError || {}) })
         return
       }
       room = cloudRoom
@@ -133,9 +136,10 @@ Page({
       this.roomId = room.id
     }
     if (!room) {
-      wx.showToast({ title: '聚会不存在或已删除', icon: 'none' })
+      this.setData({ loadError: '聚会不存在或已删除' })
       return
     }
+    this.setData({ loadError: '' })
     if (room.preview) {
       this.setData({
         room: Object.assign({}, room, { categoryLabel: CATEGORY_LABELS[room.category] }),
@@ -183,6 +187,20 @@ Page({
       this.autoRefreshRevision = room.memberRevision
       this.refreshNearby()
     }
+  },
+  retryLoadRoom() {
+    this.loadRoom().then(() => this.startWatch())
+  },
+  retryCloudSync() {
+    if (this.data.syncingRoom) return
+    const room = getRoom(this.roomId)
+    if (!room || room.cloudId || !room.currentUserIsOwner) return
+    this.setData({ syncingRoom: true })
+    cloudCreateRoom(room).then((savedRoom) => {
+      this.setData({ syncingRoom: false })
+      this.loadRoom(true)
+      wx.showToast({ title: savedRoom ? '已同步到云端' : '同步失败，请稍后重试', icon: 'none' })
+    })
   },
   getMarkers(room, recommendations, selectedVenueId) {
     const selected = recommendations.find((venue) => venue.id === selectedVenueId)
