@@ -200,7 +200,7 @@ Page({
     })
     // 如果没有地点数据，自动搜索
     if (!venues || !venues.length) {
-      this.refreshNearby()
+      if (!room.cloudId || room.currentUserIsOwner) this.refreshNearby()
     } else if (recommendationsStale && room.cloudId && room.currentUserIsOwner && !localOnly &&
       this.autoRefreshRevision !== `${room.memberRevision}:${room.meetingTime}`) {
       this.autoRefreshRevision = `${room.memberRevision}:${room.meetingTime}`
@@ -244,6 +244,10 @@ Page({
     if (this.data.refreshingNearby) return
     const room = getRoom(this.roomId)
     if (!room || !room.members || !room.members.length) return
+    if (room.cloudId && !room.currentUserIsOwner) {
+      wx.showToast({ title: '请创建者更新推荐', icon: 'none' })
+      return
+    }
     const origins = candidateOrigins(room.members)
     this.setData({ refreshingNearby: true })
     wx.showLoading({ title: '搜索附近地点' })
@@ -526,12 +530,12 @@ Page({
     const save = wasEditing
       ? updateMyMember(this.roomId, member)
       : addMemberToRoom(this.roomId, member, this.data.joinClaimCode)
-    save.then(() => {
+    save.then((savedRoom) => {
       this.setData({ joinSubmitting: false })
       this.closeJoinModal()
       this.loadRoom(true).then(() => {
         this.startWatch()
-        this.refreshNearby()
+        if (!savedRoom.cloudId || savedRoom.currentUserIsOwner) this.refreshNearby()
       })
       wx.showToast({ title: wasEditing ? '已更新我的信息' : '已成功加入聚会', icon: 'success' })
     }).catch((error) => {

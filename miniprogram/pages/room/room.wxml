@@ -66,7 +66,8 @@
     <view wx:if="{{recommendationsStale}}" class="empty-card card">
       <view class="empty-title">成员信息已变化，推荐待更新</view>
       <view class="empty-copy">当前地点和路线基于旧成员信息，更新后再比较通勤时间。</view>
-      <button class="empty-action" disabled="{{refreshingNearby}}" bindtap="refreshNearby">{{refreshingNearby ? '正在更新…' : '更新推荐'}}</button>
+      <button wx:if="{{!room.cloudId || room.currentUserIsOwner}}" class="empty-action" disabled="{{refreshingNearby}}" bindtap="refreshNearby">{{refreshingNearby ? '正在更新…' : '更新推荐'}}</button>
+      <view wx:else class="empty-copy">等待创建者更新推荐后会自动同步。</view>
     </view>
 
     <map class="meeting-map" latitude="{{point.latitude}}" longitude="{{point.longitude}}" scale="13" markers="{{markers}}" show-location="false"></map>
@@ -74,7 +75,7 @@
 
     <view class="category-tabs"><view wx:for="{{categories}}" wx:key="id" class="category-tab {{activeCategory === item.id ? 'tab-active' : ''}}" bindtap="selectCategory" data-id="{{item.id}}">{{item.label}}</view></view>
     <view class="goal-tabs"><view wx:for="{{goals}}" wx:key="id" class="category-tab {{activeGoal === item.id ? 'tab-active' : ''}}" bindtap="selectGoal" data-id="{{item.id}}">{{item.label}}</view></view>
-    <view class="list-heading"><view><view class="section-title">推荐地点</view><view class="section-subtitle">{{room.venueSourceLabel}}</view></view><button class="search-nearby" bindtap="refreshNearby">更新附近</button></view>
+    <view class="list-heading"><view><view class="section-title">推荐地点</view><view class="section-subtitle">{{room.venueSourceLabel}}</view></view><button wx:if="{{!room.cloudId || room.currentUserIsOwner}}" class="search-nearby" bindtap="refreshNearby">更新附近</button></view>
 
     <view wx:if="{{recommendations.length}}" class="venue-list">
       <view wx:for="{{recommendations}}" wx:key="id" class="venue-card card {{selectedVenueId === item.id ? 'venue-selected' : ''}}" bindtap="selectVenue" data-id="{{item.id}}">
@@ -94,7 +95,7 @@
       <view class="empty-icon">⌕</view>
       <view class="empty-title">这里暂时没有匹配地点</view>
       <view class="empty-copy">试试切换活动类型，或重新搜索折中区域附近的地点。</view>
-      <button class="empty-action" bindtap="refreshNearby">重新搜索附近</button>
+      <button wx:if="{{!room.cloudId || room.currentUserIsOwner}}" class="empty-action" bindtap="refreshNearby">重新搜索附近</button>
     </view>
     <button wx:if="{{room.currentUserIsOwner && selectedVenueId}}" class="confirm-venue-button" bindtap="confirmSelectedVenue">{{room.finalVenue ? '重新确定选中的地点' : '确定选中的地点'}}</button>
     <view wx:if="{{claimableMembers.length}}" class="claim-card card">

@@ -56,13 +56,17 @@ Module._load = originalLoad
 const member = (id, name) => ({ id, name, latitude: 31, longitude: 121, transport: 'transit' })
 const room = { id: 'room-1', title: '聚会', category: 'food', meetingDate: '2026-10-03', meetingTime: '18:30',
   members: [member('owner-seat', '你'), member('guest-seat', '小李')], venues: [
-  { id: 'venue-1', name: '餐厅', address: '测试地址', latitude: 31.1, longitude: 121.1 },
-  { id: 'venue-2', name: '咖啡馆', address: '第二地址', latitude: 31.2, longitude: 121.2 }
+  { id: 'venue-1', name: '餐厅', category: 'food', address: '测试地址', latitude: 31.1, longitude: 121.1 },
+  { id: 'venue-2', name: '咖啡馆', category: 'coffee', address: '第二地址', latitude: 31.2, longitude: 121.2 }
 ] }
 
 async function run() {
   const created = await roomService.main({ action: 'create', room })
   assert.strictEqual(created.ok, true)
+  const invalidCreate = await roomService.main({ action: 'create', room: Object.assign({}, room, {
+    id: 'invalid-room', venues: [{ id: 'bad', category: 'food', name: '错误', latitude: 999, longitude: 121 }]
+  }) })
+  assert.strictEqual(invalidCreate.ok, false)
   const code = created.code
   assert.strictEqual((await roomService.main({ action: 'get', code: 'BAD' })).code, 'INVALID_CODE')
   const retried = await roomService.main({ action: 'create', room })

@@ -44,8 +44,74 @@ function normalizeAvailability(value) {
   })
 }
 
+function normalizeVenues(value) {
+  if (!Array.isArray(value) || value.length > 100) throw new Error('地点数据不合法')
+  const seen = new Set()
+  return value.map((venue) => {
+    if (!venue || typeof venue !== 'object' || Array.isArray(venue)) throw new Error('地点数据不合法')
+    const id = String(venue.id || '')
+    const name = String(venue.name || '').trim()
+    if (!id || id.length > 160 || ['__proto__', 'constructor', 'prototype'].includes(id) ||
+      seen.has(id) || !name || name.length > 80 || CATEGORIES.indexOf(venue.category) < 0 ||
+      !Number.isFinite(venue.latitude) || venue.latitude < -90 || venue.latitude > 90 ||
+      !Number.isFinite(venue.longitude) || venue.longitude < -180 || venue.longitude > 180) {
+      throw new Error('地点数据不合法')
+    }
+    seen.add(id)
+    const optionalNumber = (number, max) => {
+      if (number === null || number === undefined || number === '') return null
+      if (!Number.isFinite(number) || number < 0 || number > max) throw new Error('地点数据不合法')
+      return number
+    }
+    const text = (value, max) => String(value || '').slice(0, max)
+    return {
+      id, name, category: venue.category,
+      providerId: text(venue.providerId, 100), cityCode: text(venue.cityCode, 20),
+      address: text(venue.address, 160), latitude: venue.latitude, longitude: venue.longitude,
+      rating: optionalNumber(venue.rating, 5), price: optionalNumber(venue.price, 100000),
+      openingStatus: text(venue.openingStatus, 20), openingText: text(venue.openingText, 80),
+      tags: text(venue.tags, 200), parkingType: text(venue.parkingType, 80),
+      highlight: text(venue.highlight, 200), distanceMeters: optionalNumber(venue.distanceMeters, 1000000),
+      source: text(venue.source, 20)
+    }
+  })
+}
+
+function normalizeRouteMatrix(value, venues, members) {
+  if (value === undefined || value === null) return {}
+  if (typeof value !== 'object' || Array.isArray(value)) throw new Error('路线数据不合法')
+  const venueIds = new Set(venues.map((venue) => venue.id))
+  const memberIds = new Set(members.map((member) => member.id))
+  const matrix = {}
+  for (const venueId of Object.keys(value)) {
+    if (!venueIds.has(venueId)) throw new Error('路线数据不合法')
+    const routes = value[venueId]
+    if (!routes || typeof routes !== 'object' || Array.isArray(routes)) throw new Error('路线数据不合法')
+    matrix[venueId] = {}
+    for (const memberId of Object.keys(routes)) {
+      const route = routes[memberId]
+      if (!memberIds.has(memberId) || !route || typeof route !== 'object' || Array.isArray(route) ||
+        !Number.isFinite(route.minutes) || route.minutes < 1 || route.minutes > 1440 ||
+        (route.distance !== null && route.distance !== undefined &&
+          (!Number.isFinite(route.distance) || route.distance < 0 || route.distance > 10000))) {
+        throw new Error('路线数据不合法')
+      }
+      matrix[venueId][memberId] = { minutes: route.minutes,
+        distance: route.distance === undefined ? null : route.distance, source: 'amap-route' }
+    }
+  }
+  return matrix
+}
+
+function normalizeVenueSource(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  return { live: value.live === true, provider: ['amap', 'tencent'].includes(value.provider) ? value.provider : '',
+    label: String(value.label || '').slice(0, 120) }
+}
+
 function normalizeMember(member, id) {
   if (!member || typeof member !== 'object') throw new Error('成员数据不合法')
+  if (typeof id !== 'string' || !id || id.length > 80 || ['__proto__', 'constructor', 'prototype'].includes(id)) throw new Error('成员标识不合法')
   const name = String(member.name || '').trim().slice(0, 8)
   const latitude = Number(member.latitude)
   const longitude = Number(member.longitude)
@@ -132,6 +198,8 @@ async function createRoom(room, openid) {
     const signalId = crypto.randomBytes(16).toString('hex')
     const retentionHours = RETENTION_HOURS.indexOf(Number(room.retentionHours)) >= 0 ? Number(room.retentionHours) : 720
     const expiresAt = Date.now() + retentionHours * 3600000
+    const members = room.members.map((member, index) => normalizeMember(member, index === 0 ? ownerMemberId : (member.id || generateMemberId())))
+    const venues = normalizeVenues(room.venues)
     const savedRoom = {
       id: String(room.id).slice(0, 80),
       title: String(room.title).trim().slice(0, 18),
@@ -145,10 +213,10 @@ async function createRoom(room, openid) {
       retentionHours,
       expiresAt,
       cloudId: code,
-      members: room.members.map((member, index) => normalizeMember(member, index === 0 ? ownerMemberId : (member.id || generateMemberId()))),
-      venues: room.venues,
-      venueSource: room.venueSource || null,
-      routeMatrix: room.routeMatrix && typeof room.routeMatrix === 'object' ? room.routeMatrix : {},
+      members,
+      venues,
+      venueSource: normalizeVenueSource(room.venueSource),
+      routeMatrix: normalizeRouteMatrix(room.routeMatrix, venues, members),
       memberRevision: 0,
       venueMemberRevision: 0,
       votes: {},
@@ -397,20 +465,21 @@ exports.main = async (event) => {
       const code = String(event.code || '').toUpperCase()
       const doc = CODE_PATTERN.test(code) ? await findRoom(code) : null
       if (!doc) return { ok: false, message: '聚会不存在' }
-      if (!Array.isArray(event.venues) || event.venues.length > 100) return { ok: false, message: '地点数据不合法' }
+      if (doc.owner !== OPENID) return { ok: false, message: '只有创建者可以更新地点' }
       const result = await db.runTransaction(async (transaction) => {
         const current = (await transaction.collection(COLLECTION).doc(doc._id).get()).data
         if (!current) throw new Error('聚会不存在')
         if (current.expiresAt < Date.now()) throw new Error('聚会已过期')
+        if (current.owner !== OPENID) throw new Error('只有创建者可以更新地点')
         const memberId = getViewerMemberId(current, OPENID)
-        if (!memberId) throw new Error('请先加入聚会')
         if (event.memberRevision !== (current.room.memberRevision || 0)) throw new Error('成员已变化，请重新搜索地点')
         if (current.room.meetingTime && event.meetingTime !== current.room.meetingTime) throw new Error('聚会时间已变化，请重新搜索地点')
+        const venues = normalizeVenues(event.venues)
         const room = Object.assign({}, current.room, {
           cloudId: code,
-          venues: event.venues,
-          venueSource: event.venueSource || null,
-          routeMatrix: event.routeMatrix && typeof event.routeMatrix === 'object' ? event.routeMatrix : {},
+          venues,
+          venueSource: normalizeVenueSource(event.venueSource),
+          routeMatrix: normalizeRouteMatrix(event.routeMatrix, venues, current.room.members),
           venueMemberRevision: current.room.memberRevision || 0,
           meetingSearchTime: current.room.meetingTime || '',
           venueSearchAt: Date.now()
