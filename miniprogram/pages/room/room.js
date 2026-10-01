@@ -1,4 +1,4 @@
-const { getRoom, updateRoom, encodeRoom, addMemberToRoom, cloudGetRoom, cloudIssueClaimCode, cloudToggleVote, cloudSetVenues, cloudLeaveRoom, cloudDeleteRoom } = require('../../utils/store')
+const { getRoom, updateRoom, encodeRoom, addMemberToRoom, updateMyMember, cloudGetRoom, cloudIssueClaimCode, cloudToggleVote, cloudSetVenues, cloudLeaveRoom, cloudDeleteRoom } = require('../../utils/store')
 const { midpoint, candidateOrigins, routeCandidates, recommendVenues } = require('../../utils/recommend')
 const { prepareMemberLocation } = require('../../utils/privacy')
 const { CATEGORY_LABELS, TRANSPORT_LABELS } = require('../../utils/constants')
@@ -40,6 +40,9 @@ Page({
       { id: 'fun', label: '娱乐' }
     ],
     showJoinModal: false,
+    editingMember: false,
+    editLocationChanged: false,
+    editOriginalApproximate: false,
     joinName: '',
     joinClaimCode: '',
     joinLocationName: '',
@@ -272,10 +275,23 @@ Page({
     wx.showToast({ title: hasVoted ? '已取消投票' : '已投给这个地点', icon: 'none' })
   },
   openJoinModal() {
-    this.setData({ showJoinModal: true })
+    this.setData({ showJoinModal: true, editingMember: false, joinName: '', joinClaimCode: '', joinLocationName: '', joinLatitude: null, joinLongitude: null })
+  },
+  openEditMember() {
+    const room = getRoom(this.roomId)
+    const member = room && room.members.find((item) => item.id === room.currentMemberId)
+    if (!member) return
+    this.setData({
+      showJoinModal: true, editingMember: true, editLocationChanged: false,
+      editOriginalApproximate: Boolean(member.approximate),
+      joinName: member.name, joinClaimCode: '', joinLocationName: member.locationName,
+      joinLatitude: member.latitude, joinLongitude: member.longitude,
+      joinTransport: member.transport, joinBudget: member.budget,
+      joinApproximate: Boolean(member.approximate)
+    })
   },
   closeJoinModal() {
-    this.setData({ showJoinModal: false })
+    this.setData({ showJoinModal: false, editingMember: false })
   },
   setJoinName(event) {
     const name = event.detail.value.slice(0, 8)
@@ -311,7 +327,8 @@ Page({
         this.setData({
           joinLatitude: result.latitude,
           joinLongitude: result.longitude,
-          joinLocationName: result.name || result.address || '已选择位置'
+          joinLocationName: result.name || result.address || '已选择位置',
+          editLocationChanged: true
         })
       },
       fail: () => wx.showToast({ title: '未选择位置', icon: 'none' })
@@ -327,7 +344,8 @@ Page({
         this.setData({
           joinLatitude: result.latitude,
           joinLongitude: result.longitude,
-          joinLocationName: `当前位置 · ${result.latitude.toFixed(4)}, ${result.longitude.toFixed(4)}`
+          joinLocationName: `当前位置 · ${result.latitude.toFixed(4)}, ${result.longitude.toFixed(4)}`,
+          editLocationChanged: true
         })
         wx.showToast({ title: '已获取位置', icon: 'success' })
       },
@@ -357,6 +375,10 @@ Page({
       wx.showToast({ title: '请选择你的出发位置', icon: 'none' })
       return
     }
+    if (this.data.editingMember && this.data.editOriginalApproximate && !this.data.joinApproximate && !this.data.editLocationChanged) {
+      wx.showToast({ title: '请重新选择精确位置', icon: 'none' })
+      return
+    }
     const room = getRoom(this.roomId)
     const member = prepareMemberLocation({
       name,
@@ -370,14 +392,18 @@ Page({
       approximate: this.data.joinApproximate
     })
     this.setData({ joinSubmitting: true })
-    addMemberToRoom(this.roomId, member, this.data.joinClaimCode).then(() => {
+    const wasEditing = this.data.editingMember
+    const save = wasEditing
+      ? updateMyMember(this.roomId, member)
+      : addMemberToRoom(this.roomId, member, this.data.joinClaimCode)
+    save.then(() => {
       this.setData({ joinSubmitting: false })
       this.closeJoinModal()
       this.loadRoom(true).then(() => {
         this.startWatch()
         this.refreshNearby()
       })
-      wx.showToast({ title: '已成功加入聚会', icon: 'success' })
+      wx.showToast({ title: wasEditing ? '已更新我的信息' : '已成功加入聚会', icon: 'success' })
     }).catch((error) => {
       this.setData({ joinSubmitting: false })
       wx.showToast({ title: error.message || '加入失败', icon: 'none' })

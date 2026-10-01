@@ -134,6 +134,32 @@ function addMemberToRoom(roomId, member, claimCode) {
   return Promise.resolve(room)
 }
 
+function updateMyMember(roomId, member) {
+  const room = getRoom(roomId)
+  if (!room || !room.currentMemberId) return Promise.reject(new Error('请先加入聚会'))
+  if (room.cloudId) {
+    return callRoomService('updateMember', { code: room.cloudId, member }).then((result) => {
+      const syncedRoom = Object.assign({}, result.room, {
+        cloudId: result.code,
+        currentMemberId: result.viewerMemberId,
+        currentUserIsOwner: Boolean(result.isOwner),
+        claimableMemberIds: room.claimableMemberIds || [],
+        signalId: result.signalId || room.signalId || ''
+      })
+      updateRoom(syncedRoom)
+      return syncedRoom
+    })
+  }
+  const previous = room.members.find((item) => item.id === room.currentMemberId)
+  if (!previous) return Promise.reject(new Error('成员不存在'))
+  room.members = room.members.map((item) => item.id === room.currentMemberId
+    ? Object.assign({}, item, member, { id: item.id, color: item.color }) : item)
+  room.routeMatrix = {}
+  room.memberRevision = (room.memberRevision || 0) + 1
+  updateRoom(room)
+  return Promise.resolve(room)
+}
+
 function cloudIssueClaimCode(room, memberId) {
   return callRoomService('issueClaimCode', { code: room.cloudId, memberId })
 }
@@ -396,6 +422,7 @@ module.exports = {
   cloudCreateRoom,
   cloudGetRoom,
   addMemberToRoom,
+  updateMyMember,
   cloudIssueClaimCode,
   cloudToggleVote,
   cloudSetVenues,

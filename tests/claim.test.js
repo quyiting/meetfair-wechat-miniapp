@@ -79,6 +79,8 @@ async function run() {
 
   const denied = await roomService.main({ action: 'issueClaimCode', code, memberId: 'guest-seat' })
   assert.strictEqual(denied.ok, false)
+  const deniedEdit = await roomService.main({ action: 'updateMember', code, member: member('owner-seat', '冒名修改') })
+  assert.strictEqual(deniedEdit.ok, false)
 
   openid = 'owner'
   const ownerView = await roomService.main({ action: 'get', code })
@@ -104,13 +106,23 @@ async function run() {
   assert.strictEqual(signals[joined.signalId].openid, 'invitee')
   const joinedView = await roomService.main({ action: 'get', code })
   assert.strictEqual(joinedView.room.members[0].longitude, 121)
+  docs[0].room.routeMatrix = { 'venue-1': { 'guest-seat': { minutes: 20 } } }
+  const edited = await roomService.main({ action: 'updateMember', code, member: Object.assign(member('owner-seat', '新名字'), {
+    latitude: 32, longitude: 122, transport: 'walking', budget: 50
+  }) })
+  assert.strictEqual(edited.ok, true)
+  assert.strictEqual(edited.room.memberRevision, 3)
+  assert.strictEqual(edited.room.members.find((item) => item.id === 'guest-seat').name, '新名字')
+  assert.strictEqual(edited.room.members.find((item) => item.id === 'guest-seat').latitude, 32)
+  assert.strictEqual(edited.room.members[0].name, '你', '成员不能用客户端传入的 ID 修改别人')
+  assert.deepStrictEqual(edited.room.routeMatrix, {}, '修改出发信息后旧路线必须失效')
   const previousVersion = signals[created.signalId].version
   const voted = await roomService.main({ action: 'toggleVote', code, venueId: 'venue-1' })
   assert.strictEqual(voted.ok, true)
   assert.notStrictEqual(signals[created.signalId].version, previousVersion)
   const left = await roomService.main({ action: 'leave', code })
   assert.strictEqual(left.ok, true)
-  assert.strictEqual(docs[0].room.memberRevision, 3)
+  assert.strictEqual(docs[0].room.memberRevision, 4)
   assert(!docs[0].room.members.some((item) => item.id === 'guest-seat'))
   assert.deepStrictEqual(docs[0].room.votes['venue-1'], [])
   assert.strictEqual(signals[joined.signalId], undefined)

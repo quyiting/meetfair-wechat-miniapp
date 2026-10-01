@@ -252,6 +252,7 @@ exports.main = async (event) => {
         const room = Object.assign({}, current.room, {
           cloudId: code,
           memberRevision: (current.room.memberRevision || 0) + 1,
+          routeMatrix: claimableMember ? {} : current.room.routeMatrix,
           members: claimableMember
             ? current.room.members.map((item) => item.id === memberId ? member : item)
             : current.room.members.concat(member)
@@ -268,6 +269,31 @@ exports.main = async (event) => {
       await publishSignals(joined.doc.signals)
       return { ok: true, code, room: joined.room, viewerMemberId: joined.memberId, isOwner: doc.owner === OPENID,
         claimableMemberIds: doc.owner === OPENID ? claimableMemberIds(joined.doc) : [], signalId }
+    }
+
+    if (action === 'updateMember') {
+      const code = String(event.code || '').toUpperCase()
+      const doc = CODE_PATTERN.test(code) ? await findRoom(code) : null
+      if (!doc) return { ok: false, message: '聚会不存在' }
+      const result = await db.runTransaction(async (transaction) => {
+        const current = (await transaction.collection(COLLECTION).doc(doc._id).get()).data
+        if (!current || current.expiresAt < Date.now()) throw new Error('聚会已过期')
+        const memberId = getViewerMemberId(current, OPENID)
+        if (!memberId) throw new Error('请先加入聚会')
+        const previous = current.room.members.find((item) => item.id === memberId)
+        if (!previous) throw new Error('成员不存在')
+        const member = normalizeMember(Object.assign({}, event.member, { color: previous.color }), memberId)
+        const room = Object.assign({}, current.room, {
+          memberRevision: (current.room.memberRevision || 0) + 1,
+          members: current.room.members.map((item) => item.id === memberId ? member : item),
+          routeMatrix: {}
+        })
+        await transaction.collection(COLLECTION).doc(doc._id).update({ data: { room, updatedAt: Date.now() } })
+        return { room, memberId, doc: current }
+      }, 3)
+      await publishSignals(result.doc.signals)
+      return { ok: true, code, room: result.room, viewerMemberId: result.memberId, isOwner: result.doc.owner === OPENID,
+        signalId: (result.doc.signals || {})[OPENID] || '' }
     }
 
     if (action === 'toggleVote') {
