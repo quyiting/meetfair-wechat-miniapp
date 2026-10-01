@@ -1,0 +1,36 @@
+name: 功能建议
+description: 提议一个范围明确、可以验收的改进
+title: "[Feature] "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 使用场景与问题
+      description: 谁在什么情况下遇到了什么问题？
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 建议方案
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 考虑过的替代方案
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 验收标准
+      description: 完成后如何判断这个建议已经实现？
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: 提交前确认
+      options:
+        - label: 我已搜索现有 Issue，没有发现重复建议。
+          required: true

@@ -1,6 +1,12 @@
 {
   "name": "meetfair-miniprogram",
+  "description": "为多人聚会推荐通勤更公平的地点和时间",
   "private": true,
+  "license": "MIT",
+  "repository": "github:quyiting/meetfair-wechat-miniapp",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "test": "node tests/recommend.test.js && node tests/store.test.js && node tests/claim.test.js && node tests/meeting-time.test.js && node tests/privacy.test.js && node tests/room-preview.test.js && node tests/room-concurrency.test.js && node tests/cleanup-rooms.test.js"
   }
