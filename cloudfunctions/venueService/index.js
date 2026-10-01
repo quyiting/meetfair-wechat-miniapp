@@ -8,6 +8,28 @@ const PAGE_SIZE = 20
 const SEARCH_RADIUS = 8000
 const HOURS_PATTERN = /^\d{2}:\d{2}-\d{2}:\d{2}(?:\s+\d{2}:\d{2}-\d{2}:\d{2})*$/
 const WEEKDAYS = '日一二三四五六'
+const SEARCH_CACHE_TTL_MS = 5 * 60 * 1000
+const SEARCH_CACHE_LIMIT = 64
+const searchCache = new Map()
+
+function cachedSearch(provider, origin, category, meeting, pageSize, search) {
+  const key = [provider, origin.latitude.toFixed(3), origin.longitude.toFixed(3), category, meeting.date, meeting.time, pageSize].join('|')
+  const cached = searchCache.get(key)
+  if (cached && cached.expiresAt > Date.now()) return cached.promise.then((venues) => ({ venues, cacheHit: true }))
+  if (cached) searchCache.delete(key)
+  const promise = Promise.resolve().then(() => search(origin, category, meeting)).catch((error) => {
+    if (searchCache.get(key)?.promise === promise) searchCache.delete(key)
+    throw error
+  })
+  searchCache.set(key, { promise, expiresAt: Date.now() + SEARCH_CACHE_TTL_MS })
+  if (searchCache.size > SEARCH_CACHE_LIMIT) searchCache.delete(searchCache.keys().next().value)
+  return promise.then((venues) => ({ venues, cacheHit: false }))
+}
+
+function logSummary(action, provider, status, startedAt, details = {}) {
+  console.info('[venueService]', JSON.stringify(Object.assign({ action, provider, status,
+    durationMs: Date.now() - startedAt }, details)))
+}
 
 function timeInHours(hours, time) {
   if (!HOURS_PATTERN.test(hours)) return 'unknown'
@@ -191,16 +213,23 @@ async function getAmapRoute(member, venue, meetingDate, meetingTime) {
       source: 'amap-route'
     }
   } catch (error) {
-    console.warn('[venueService] 路线规划失败:', error.message)
+    console.warn('[venueService]', JSON.stringify({ action: 'route', status: 'error', errorType: error.name || 'Error' }))
     return null
   }
 }
 
 async function getRouteMatrix(event) {
+  const members = event.members
+  const venues = event.venues
+  const validPoint = (point) => point && typeof point.id === 'string' && point.id.length > 0 && point.id.length <= 160 &&
+    Number.isFinite(point.latitude) && point.latitude >= -90 && point.latitude <= 90 &&
+    Number.isFinite(point.longitude) && point.longitude >= -180 && point.longitude <= 180
+  if (!Array.isArray(members) || !Array.isArray(venues) || !members.length || members.length > 8 ||
+    !venues.length || venues.length > 6 || members.some((member) => !validPoint(member) ||
+      (member.transport && ['transit', 'driving', 'walking', 'bicycle'].indexOf(member.transport) < 0)) ||
+    venues.some((venue) => !validPoint(venue) || (venue.cityCode &&
+      (typeof venue.cityCode !== 'string' || venue.cityCode.length > 20)))) return { ok: false, message: '路线规划参数不合法' }
   if (!process.env.AMAP_KEY) return { ok: true, available: false, routeMatrix: {} }
-  const members = Array.isArray(event.members) ? event.members.slice(0, 8) : []
-  const venues = Array.isArray(event.venues) ? event.venues.slice(0, 6) : []
-  if (!members.length || !venues.length) return { ok: false, message: '路线规划参数不完整' }
   const pairs = []
   venues.forEach((venue) => members.forEach((member) => pairs.push({ member, venue })))
   const results = []
@@ -220,28 +249,48 @@ async function getRouteMatrix(event) {
 }
 
 exports.main = async (event) => {
+  const startedAt = Date.now()
+  const action = event.action === 'routes' ? 'routes' : 'search'
+  const provider = process.env.AMAP_KEY ? 'amap' : 'tencent'
   try {
-    if (event.action === 'routes') return await getRouteMatrix(event)
+    if (event.action === 'routes') {
+      const result = await getRouteMatrix(event)
+      logSummary(action, provider, result.ok ? 'ok' : 'invalid', startedAt,
+        { venueCount: Array.isArray(event.venues) ? Math.min(event.venues.length, 6) : 0 })
+      return result
+    }
     const origins = Array.isArray(event.origins) ? event.origins : [event.origin || {}]
     if (!origins.length || origins.length > 3 || origins.some((origin) =>
       !Number.isFinite(Number(origin.latitude)) || Number(origin.latitude) < -90 || Number(origin.latitude) > 90 ||
       !Number.isFinite(Number(origin.longitude)) || Number(origin.longitude) < -180 || Number(origin.longitude) > 180)) {
+      logSummary(action, provider, 'invalid', startedAt)
       return { ok: false, message: '搜索中心坐标不合法' }
     }
+    const searchOrigins = origins.map((origin) => ({ latitude: Number(origin.latitude), longitude: Number(origin.longitude) }))
     const categories = event.category === 'all' ? CATEGORY_KEYS : [event.category]
-    if (categories.some((category) => CATEGORY_KEYS.indexOf(category) < 0)) return { ok: false, message: '地点类别不合法' }
-    const provider = process.env.AMAP_KEY ? 'amap' : 'tencent'
+    if (categories.some((category) => CATEGORY_KEYS.indexOf(category) < 0)) {
+      logSummary(action, provider, 'invalid', startedAt)
+      return { ok: false, message: '地点类别不合法' }
+    }
     const search = provider === 'amap' ? searchAmap : searchTencent
     const meeting = { date: String(event.meetingDate || ''), time: String(event.meetingTime || '') }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(meeting.date) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(meeting.time)) {
+      logSummary(action, provider, 'invalid', startedAt)
+      return { ok: false, message: '聚会时间不合法' }
+    }
     const venuesById = new Map()
-    for (const origin of origins) {
-      const pageSize = origins.length > 1 ? 8 : PAGE_SIZE
-      const groups = await Promise.all(categories.map((category) => search(origin, category, meeting, pageSize)))
-      groups.flat().forEach((venue) => {
+    let cacheHits = 0
+    for (const origin of searchOrigins) {
+      const pageSize = searchOrigins.length > 1 ? 8 : PAGE_SIZE
+      const groups = await Promise.all(categories.map((category) => cachedSearch(provider, origin, category, meeting, pageSize,
+        (point, kind, at) => search(point, kind, at, pageSize))))
+      cacheHits += groups.filter((group) => group.cacheHit).length
+      groups.flatMap((group) => group.venues).forEach((venue) => {
         if (Number.isFinite(venue.latitude) && Number.isFinite(venue.longitude) && !venuesById.has(venue.id)) venuesById.set(venue.id, venue)
       })
     }
     const venues = Array.from(venuesById.values()).slice(0, 100)
+    logSummary(action, provider, 'ok', startedAt, { venueCount: venues.length, cacheHits })
     return {
       ok: true, venues,
       source: {
@@ -250,10 +299,11 @@ exports.main = async (event) => {
       }
     }
   } catch (error) {
-    console.error('[venueService] 失败:', error)
+    logSummary(action, provider, 'error', startedAt, { errorType: error.name || 'Error' })
     return { ok: false, message: error.message || '地点搜索失败' }
   }
 }
 
 module.exports.openingStatus = openingStatus
 module.exports.transitDeparture = transitDeparture
+module.exports.cachedSearch = cachedSearch

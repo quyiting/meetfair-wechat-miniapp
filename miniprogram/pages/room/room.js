@@ -1,5 +1,5 @@
 const { getRoom, updateRoom, encodeRoom, addMemberToRoom, updateMyMember, updateMyAvailability, setMeetingTime, cloudCreateRoom, cloudGetRoom, cloudErrorText, cloudIssueClaimCode, cloudToggleVote, cloudSetVenues, setFinalVenue, cloudLeaveRoom, cloudDeleteRoom } = require('../../utils/store')
-const { midpoint, candidateOrigins, routeCandidates, recommendVenues } = require('../../utils/recommend')
+const { midpoint, candidateOrigins, routeCandidates, recommendVenues, explainTopRecommendation } = require('../../utils/recommend')
 const { recommendMeetingTimes } = require('../../utils/meeting-time')
 const { prepareMemberLocation } = require('../../utils/privacy')
 const { CATEGORY_LABELS, TRANSPORT_LABELS } = require('../../utils/constants')
@@ -23,6 +23,7 @@ Page({
     syncingRoom: false,
     point: null,
     recommendations: [],
+    topRecommendationReason: '',
     recommendationsStale: false,
     refreshingNearby: false,
     timeSuggestions: [],
@@ -152,7 +153,7 @@ Page({
       this.setData({
         room: Object.assign({}, room, { categoryLabel: CATEGORY_LABELS[room.category] }),
         point: null, recommendations: [], selectedVenueId: '', markers: [],
-        recommendationsStale: false, timeSuggestions: [], timeResponded: 0,
+        recommendationsStale: false, timeSuggestions: [], timeResponded: 0, topRecommendationReason: '',
         isMember: false, claimableMembers: [], codePreview: room.cloudId,
         codeLabel: '聚会码 · 6 位'
       })
@@ -187,6 +188,7 @@ Page({
       }),
       point,
       recommendations,
+      topRecommendationReason: explainTopRecommendation(recommendations, this.data.activeGoal),
       recommendationsStale,
       timeSuggestions,
       timeResponded,
@@ -249,15 +251,21 @@ Page({
       return
     }
     const origins = candidateOrigins(room.members)
+    const meetingDate = room.meetingDate || String(room.dateText || '').slice(0, 10)
+    const meetingTime = room.meetingTime || String(room.dateText || '').slice(11, 16)
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(meetingDate) || !/^\d{2}:\d{2}$/.test(meetingTime)) {
+      wx.showToast({ title: '聚会时间不完整，无法刷新地点', icon: 'none' })
+      return
+    }
     this.setData({ refreshingNearby: true })
     wx.showLoading({ title: '搜索附近地点' })
     // 始终搜索全部类别，缓存后按标签筛选
-    getNearbyVenues(origins, 'all', room.meetingDate, room.meetingTime).then((searchResult) => {
+    getNearbyVenues(origins, 'all', meetingDate, meetingTime).then((searchResult) => {
       room.venues = searchResult.venues
       room.venueSource = searchResult.source
       room.venueSearchAt = Date.now()
       room.routeMatrix = {}
-      return getRouteMatrix(room.members, routeCandidates(room), room.meetingDate, room.meetingTime).then((routeResult) => {
+      return getRouteMatrix(room.members, routeCandidates(room), meetingDate, meetingTime).then((routeResult) => {
         room.routeMatrix = routeResult.routeMatrix || {}
         if (!room.cloudId) {
           room.venueMemberRevision = room.memberRevision || 0

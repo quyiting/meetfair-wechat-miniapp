@@ -133,12 +133,28 @@ function recommendVenues(room, category, goal = 'max') {
       metaText,
       budgetStatus,
       preferenceMatchText: matchedPreferences.length ? `公开资料匹配：${matchedPreferences.join('、')}` : '',
+      routeCoverage: travel.filter((item) => !item.isEstimated).length,
       routeStatus: travel.every((item) => !item.isEstimated) ? '真实路线' : '含估算路线'
     })
   }).sort((a, b) => {
     const metric = goal === 'total' ? 'totalMinutes' : goal === 'equal' ? 'spreadMinutes' : 'maxMinutes'
     return a[metric] - b[metric] || b.rawScore - a.rawScore
   })
+}
+
+function explainTopRecommendation(recommendations, goal = 'max') {
+  if (!recommendations.length) return ''
+  if (recommendations.length === 1) return '当前筛选条件下只有一个候选地点。'
+  const metric = goal === 'total' ? 'totalMinutes' : goal === 'equal' ? 'spreadMinutes' : 'maxMinutes'
+  const label = goal === 'total' ? '全员总通勤' : goal === 'equal' ? '通勤时间差距' : '最远成员通勤'
+  const difference = recommendations[1][metric] - recommendations[0][metric]
+  const reason = difference > 0
+    ? `按${label}排序，首选比第二名少 ${difference} 分钟。`
+    : recommendations[0].rawScore > recommendations[1].rawScore
+      ? `${label}与第二名持平，首选的预算、类别、评分或偏好综合匹配更高。`
+      : `${label}与第二名持平，可结合预算和地点偏好选择。`
+  return recommendations[0].routeCoverage < recommendations[0].travel.length
+    ? reason + ' 含估算通勤，请以实际导航核实。' : reason
 }
 
 function routeCandidates(room) {
@@ -155,4 +171,4 @@ function routeCandidates(room) {
   return chosen
 }
 
-module.exports = { distanceKm, midpoint, candidateOrigins, estimateMinutes, recommendVenues, routeCandidates }
+module.exports = { distanceKm, midpoint, candidateOrigins, estimateMinutes, recommendVenues, routeCandidates, explainTopRecommendation }

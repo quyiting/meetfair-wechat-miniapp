@@ -76,6 +76,7 @@
     <view class="category-tabs"><view wx:for="{{categories}}" wx:key="id" class="category-tab {{activeCategory === item.id ? 'tab-active' : ''}}" bindtap="selectCategory" data-id="{{item.id}}">{{item.label}}</view></view>
     <view class="goal-tabs"><view wx:for="{{goals}}" wx:key="id" class="category-tab {{activeGoal === item.id ? 'tab-active' : ''}}" bindtap="selectGoal" data-id="{{item.id}}">{{item.label}}</view></view>
     <view class="list-heading"><view><view class="section-title">推荐地点</view><view class="section-subtitle">{{room.venueSourceLabel}}</view></view><button wx:if="{{!room.cloudId || room.currentUserIsOwner}}" class="search-nearby" bindtap="refreshNearby">更新附近</button></view>
+    <view wx:if="{{topRecommendationReason}}" class="recommendation-reason">{{topRecommendationReason}}</view>
 
     <view wx:if="{{recommendations.length}}" class="venue-list">
       <view wx:for="{{recommendations}}" wx:key="id" class="venue-card card {{selectedVenueId === item.id ? 'venue-selected' : ''}}" bindtap="selectVenue" data-id="{{item.id}}">
@@ -86,7 +87,7 @@
           <view class="venue-note">{{item.highlight}}</view>
           <view wx:if="{{item.preferenceMatchText}}" class="preference-match">{{item.preferenceMatchText}}</view>
           <view wx:if="{{item.budgetStatus}}" class="budget-fit">{{item.budgetStatus}}</view>
-          <view class="travel-summary">最远 <text>{{item.maxMinutes}} 分钟</text>　平均 {{item.averageMinutes}} 分钟 · 差距 {{item.spreadMinutes}} 分钟 · {{item.routeStatus}}</view>
+          <view class="travel-summary">最远 <text>{{item.maxMinutes}} 分钟</text>　平均 {{item.averageMinutes}} 分钟 · 差距 {{item.spreadMinutes}} 分钟 · 真实路线 {{item.routeCoverage}}/{{room.members.length}} 人</view>
         </view>
         <button class="vote-button {{item.hasVoted ? 'voted' : ''}}" catchtap="toggleVote" data-id="{{item.id}}">♥ {{item.voteCount}}</button>
       </view>
