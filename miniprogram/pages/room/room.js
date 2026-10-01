@@ -1,4 +1,4 @@
-const { getRoom, updateRoom, encodeRoom, addMemberToRoom, updateMyMember, cloudCreateRoom, cloudGetRoom, cloudErrorText, cloudIssueClaimCode, cloudToggleVote, cloudSetVenues, cloudLeaveRoom, cloudDeleteRoom } = require('../../utils/store')
+const { getRoom, updateRoom, encodeRoom, addMemberToRoom, updateMyMember, cloudCreateRoom, cloudGetRoom, cloudErrorText, cloudIssueClaimCode, cloudToggleVote, cloudSetVenues, setFinalVenue, cloudLeaveRoom, cloudDeleteRoom } = require('../../utils/store')
 const { midpoint, candidateOrigins, routeCandidates, recommendVenues } = require('../../utils/recommend')
 const { prepareMemberLocation } = require('../../utils/privacy')
 const { CATEGORY_LABELS, TRANSPORT_LABELS } = require('../../utils/constants')
@@ -156,7 +156,8 @@ Page({
       const votes = (room.votes && room.votes[venue.id]) || []
       return Object.assign({}, venue, { voteCount: votes.length, hasVoted: votes.indexOf(room.currentMemberId) >= 0 })
     })
-    const selectedVenueId = this.data.selectedVenueId || (recommendations[0] && recommendations[0].id) || ''
+    const selectedVenueId = recommendations.some((venue) => venue.id === this.data.selectedVenueId)
+      ? this.data.selectedVenueId : (recommendations[0] && recommendations[0].id) || ''
     const markers = this.getMarkers(room, recommendations, selectedVenueId)
     const isMember = Boolean(room.currentMemberId && room.members.some((m) => m.id === room.currentMemberId))
     const recommendationsStale = (room.memberRevision || 0) !== (room.venueMemberRevision || 0)
@@ -256,6 +257,36 @@ Page({
     const selectedVenueId = event.currentTarget.dataset.id
     const room = this.data.room
     this.setData({ selectedVenueId, markers: this.getMarkers(room, this.data.recommendations, selectedVenueId) })
+  },
+  confirmSelectedVenue() {
+    const room = getRoom(this.roomId)
+    const venue = room && (room.venues || []).find((item) => item.id === this.data.selectedVenueId)
+    if (!room || !room.currentUserIsOwner || !venue) return
+    wx.showModal({
+      title: room.finalVenue ? '重新确定地点' : '确定聚会地点',
+      content: `确定在「${venue.name}」见面吗？所有成员都会看到这个决定。`,
+      success: (choice) => {
+        if (!choice.confirm) return
+        wx.showLoading({ title: '正在保存地点' })
+        setFinalVenue(room, venue.id).then(() => {
+          wx.hideLoading()
+          this.loadRoom(true)
+          wx.showToast({ title: '地点已确定', icon: 'success' })
+        }).catch((error) => {
+          wx.hideLoading()
+          wx.showToast({ title: error.message || '保存失败', icon: 'none' })
+        })
+      }
+    })
+  },
+  copyFinalAddress() {
+    const venue = this.data.room && this.data.room.finalVenue
+    if (venue) wx.setClipboardData({ data: venue.address || venue.name })
+  },
+  navigateFinalVenue() {
+    const venue = this.data.room && this.data.room.finalVenue
+    if (venue) wx.openLocation({ latitude: venue.latitude, longitude: venue.longitude,
+      name: venue.name, address: venue.address, scale: 17 })
   },
   openPlace(event) {
     wx.navigateTo({ url: `/pages/place/place?roomId=${this.roomId}&venueId=${event.currentTarget.dataset.id}` })
@@ -492,7 +523,7 @@ Page({
     const room = this.data.room || {}
     const sharePath = room.cloudId ? `/pages/room/room?id=${room.cloudId}` : `/pages/room/room?id=${this.roomId}`
     return {
-      title: `${room.title || '聚会'} · 一起找个公平的碰头地点`,
+      title: room.finalVenue ? `${room.title || '聚会'} · 已确定在${room.finalVenue.name}见面` : `${room.title || '聚会'} · 一起找个公平的碰头地点`,
       path: sharePath,
       imageUrl: ''
     }

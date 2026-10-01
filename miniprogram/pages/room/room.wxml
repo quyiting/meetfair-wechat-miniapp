@@ -39,6 +39,16 @@
       </view>
     </block>
     <block wx:else>
+    <view wx:if="{{room.finalVenue}}" class="card final-venue-card">
+      <view class="section-title">已确定的聚会地点</view>
+      <view class="final-venue-name">{{room.finalVenue.name}}</view>
+      <view class="section-subtitle">{{room.finalVenue.address}} · {{room.dateText}}</view>
+      <view class="final-venue-actions">
+        <button bindtap="copyFinalAddress">复制地址</button>
+        <button bindtap="navigateFinalVenue">导航</button>
+        <button open-type="share">分享给朋友</button>
+      </view>
+    </view>
     <view class="fairness-card card">
       <view class="fairness-icon">⌘</view>
       <view class="fairness-text"><view class="fairness-title">选择这次聚会的推荐目标</view><view class="fairness-copy">{{goalDescription}}。下拉页面可同步朋友的加入和投票。</view></view>
@@ -76,6 +86,7 @@
       <view class="empty-copy">试试切换活动类型，或重新搜索折中区域附近的地点。</view>
       <button class="empty-action" bindtap="refreshNearby">重新搜索附近</button>
     </view>
+    <button wx:if="{{room.currentUserIsOwner && selectedVenueId}}" class="confirm-venue-button" bindtap="confirmSelectedVenue">{{room.finalVenue ? '重新确定选中的地点' : '确定选中的地点'}}</button>
     <view wx:if="{{claimableMembers.length}}" class="claim-card card">
       <view class="section-title">邀请预填成员认领</view>
       <view class="section-subtitle">为每个人生成一次性认领码，私下发送给本人。</view>

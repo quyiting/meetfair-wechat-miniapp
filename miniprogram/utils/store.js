@@ -210,6 +210,29 @@ function cloudSetVenues(room, venues, venueSource, routeMatrix) {
   })
 }
 
+function setFinalVenue(room, venueId) {
+  if (!room.cloudId) {
+    const venue = (room.venues || []).find((item) => item.id === venueId)
+    if (!venue) return Promise.reject(new Error('地点不存在'))
+    room.finalVenue = { id: venue.id, name: venue.name, address: venue.address,
+      latitude: venue.latitude, longitude: venue.longitude }
+    room.finalVenueAt = Date.now()
+    updateRoom(room)
+    return Promise.resolve(room)
+  }
+  return callRoomService('setFinalVenue', { code: room.cloudId, venueId }).then((result) => {
+    const syncedRoom = Object.assign({}, result.room, {
+      cloudId: result.code,
+      currentMemberId: result.viewerMemberId || room.currentMemberId,
+      currentUserIsOwner: Boolean(result.isOwner),
+      claimableMemberIds: room.claimableMemberIds || [],
+      signalId: result.signalId || room.signalId || ''
+    })
+    updateRoom(syncedRoom)
+    return syncedRoom
+  })
+}
+
 function cloudDeleteRoom(room) {
   if (!room.cloudId) {
     deleteRoom(room.id)
@@ -443,6 +466,7 @@ module.exports = {
   cloudIssueClaimCode,
   cloudToggleVote,
   cloudSetVenues,
+  setFinalVenue,
   cloudLeaveRoom,
   cloudDeleteRoom
 }

@@ -13,3 +13,4 @@
 .preference-match { color: #2c8d72; font-size: 20rpx; margin-top: 8rpx; }
 .edit-member-button { background: #edf3ff; color: #3768d8; font-size: 24rpx; margin: 32rpx 0 0; }
 .modal-dialog { overflow-y: auto; }
+.final-venue-card { margin-bottom: 18rpx; padding: 28rpx; }.final-venue-name { color: #1e2a43; font-size: 34rpx; font-weight: 800; margin: 16rpx 0 8rpx; }.final-venue-actions { display: flex; gap: 12rpx; margin-top: 20rpx; }.final-venue-actions button { background: #edf3ff; color: #3768d8; flex: 1; font-size: 21rpx; margin: 0; padding: 0 8rpx; }.confirm-venue-button { background: #1f5eff; color: #fff; font-size: 24rpx; margin: 16rpx 0; }

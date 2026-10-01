@@ -54,7 +54,10 @@ const roomService = require('../cloudfunctions/roomService')
 Module._load = originalLoad
 
 const member = (id, name) => ({ id, name, latitude: 31, longitude: 121, transport: 'transit' })
-const room = { id: 'room-1', title: '聚会', category: 'food', members: [member('owner-seat', '你'), member('guest-seat', '小李')], venues: [{ id: 'venue-1' }] }
+const room = { id: 'room-1', title: '聚会', category: 'food', members: [member('owner-seat', '你'), member('guest-seat', '小李')], venues: [
+  { id: 'venue-1', name: '餐厅', address: '测试地址', latitude: 31.1, longitude: 121.1 },
+  { id: 'venue-2', name: '咖啡馆', address: '第二地址', latitude: 31.2, longitude: 121.2 }
+] }
 
 async function run() {
   const created = await roomService.main({ action: 'create', room })
@@ -85,10 +88,19 @@ async function run() {
   assert.strictEqual(denied.ok, false)
   const deniedEdit = await roomService.main({ action: 'updateMember', code, member: member('owner-seat', '冒名修改') })
   assert.strictEqual(deniedEdit.ok, false)
+  const deniedFinal = await roomService.main({ action: 'setFinalVenue', code, venueId: 'venue-1' })
+  assert.strictEqual(deniedFinal.ok, false)
 
   openid = 'owner'
   const ownerView = await roomService.main({ action: 'get', code })
   assert.strictEqual(ownerView.room.members[0].latitude, 31)
+  const invalidFinal = await roomService.main({ action: 'setFinalVenue', code, venueId: 'missing' })
+  assert.strictEqual(invalidFinal.ok, false)
+  const final = await roomService.main({ action: 'setFinalVenue', code, venueId: 'venue-1' })
+  assert.strictEqual(final.ok, true)
+  assert.strictEqual(final.room.finalVenue.id, 'venue-1')
+  const changedFinal = await roomService.main({ action: 'setFinalVenue', code, venueId: 'venue-2' })
+  assert.strictEqual(changedFinal.room.finalVenue.id, 'venue-2')
   assert.strictEqual(ownerView.room.preview, undefined)
   const issued = await roomService.main({ action: 'issueClaimCode', code, memberId: 'guest-seat' })
   assert.match(issued.claimCode, /^[A-F0-9]{16}$/)

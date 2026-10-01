@@ -360,6 +360,32 @@ exports.main = async (event) => {
         signalId: (result.doc.signals || {})[OPENID] || '' }
     }
 
+    if (action === 'setFinalVenue') {
+      const code = String(event.code || '').toUpperCase()
+      const venueId = String(event.venueId || '')
+      const doc = CODE_PATTERN.test(code) ? await findRoom(code) : null
+      if (!doc) return { ok: false, message: '聚会不存在' }
+      if (doc.owner !== OPENID) return { ok: false, message: '只有创建者可以确定地点' }
+      const result = await db.runTransaction(async (transaction) => {
+        const current = (await transaction.collection(COLLECTION).doc(doc._id).get()).data
+        if (!current || current.expiresAt < Date.now()) throw new Error('聚会已过期')
+        if (current.owner !== OPENID) throw new Error('只有创建者可以确定地点')
+        const venue = (current.room.venues || []).find((item) => item.id === venueId)
+        if (!venue || !Number.isFinite(Number(venue.latitude)) || !Number.isFinite(Number(venue.longitude))) throw new Error('地点不存在')
+        const finalVenue = {
+          id: venue.id, name: String(venue.name || '聚会地点').slice(0, 80),
+          address: String(venue.address || '').slice(0, 160),
+          latitude: Number(venue.latitude), longitude: Number(venue.longitude)
+        }
+        const room = Object.assign({}, current.room, { finalVenue, finalVenueAt: Date.now() })
+        await transaction.collection(COLLECTION).doc(doc._id).update({ data: { room, updatedAt: Date.now() } })
+        return { room, doc: current }
+      }, 3)
+      await publishSignals(result.doc.signals)
+      return { ok: true, code, room: result.room, viewerMemberId: getViewerMemberId(result.doc, OPENID), isOwner: true,
+        signalId: (result.doc.signals || {})[OPENID] || '' }
+    }
+
     if (action === 'leave') {
       const code = String(event.code || '').toUpperCase()
       const doc = CODE_PATTERN.test(code) ? await findRoom(code) : null
