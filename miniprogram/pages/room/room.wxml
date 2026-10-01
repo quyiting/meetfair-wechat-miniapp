@@ -49,6 +49,16 @@
         <button open-type="share">分享给朋友</button>
       </view>
     </view>
+    <view wx:if="{{room.meetingDate}}" class="card time-suggestion-card">
+      <view class="section-title">聚会时间建议 · {{room.meetingDate}}</view>
+      <view class="section-subtitle">{{timeResponded}} / {{room.members.length}} 人已填写可用时间{{room.finalTimeAt ? ' · 创建者已确定 ' + room.meetingTime : ''}}</view>
+      <view wx:for="{{timeSuggestions}}" wx:key="start" class="time-suggestion-row">
+        <view><text class="time-suggestion-value">{{item.start}}–{{item.end}}</text><view class="section-subtitle">{{item.count}} / {{item.responded}} 位已填写成员可参加</view></view>
+        <button wx:if="{{room.currentUserIsOwner}}" class="time-confirm-button" bindtap="confirmSuggestedTime" data-time="{{item.start}}">确定</button>
+      </view>
+      <view wx:if="{{!timeSuggestions.length}}" class="section-subtitle">填写可用时间后会显示建议；当天会预留预计通勤时间。</view>
+      <button wx:if="{{isMember}}" class="time-edit-button" bindtap="openAvailabilityModal">填写或修改我的可用时间</button>
+    </view>
     <view class="fairness-card card">
       <view class="fairness-icon">⌘</view>
       <view class="fairness-text"><view class="fairness-title">选择这次聚会的推荐目标</view><view class="fairness-copy">{{goalDescription}}。下拉页面可同步朋友的加入和投票。</view></view>
@@ -144,6 +154,23 @@
       <view class="modal-footer">
         <button class="modal-submit" disabled="{{joinSubmitting}}" bindtap="submitJoin">{{joinSubmitting ? '正在保存…' : (editingMember ? '保存修改' : '确认加入')}}</button>
       </view>
+    </view>
+  </view>
+  <view wx:if="{{showAvailabilityModal}}" class="modal-mask" bindtap="closeAvailabilityModal">
+    <view class="modal-dialog" catchtap="">
+      <view class="modal-header"><view class="modal-title">{{room.meetingDate}} 我的可用时间</view><view class="modal-close" bindtap="closeAvailabilityModal">×</view></view>
+      <view class="modal-body">
+        <view class="form-hint">可填写最多 5 段时间；建议以约 1 小时聚会时长计算。</view>
+        <view wx:for="{{availabilityDraft}}" wx:key="start" class="availability-row">
+          <text>{{item.start}}–{{item.end}}</text><button bindtap="removeAvailabilityRange" data-index="{{index}}">移除</button>
+        </view>
+        <view class="availability-pickers">
+          <picker mode="time" value="{{availabilityStart}}" bindchange="setAvailabilityStart"><view class="meeting-time-picker">开始 {{availabilityStart}}</view></picker>
+          <picker mode="time" value="{{availabilityEnd}}" bindchange="setAvailabilityEnd"><view class="meeting-time-picker">结束 {{availabilityEnd}}</view></picker>
+        </view>
+        <button class="time-edit-button" bindtap="addAvailabilityRange">添加时段</button>
+      </view>
+      <view class="modal-footer"><button class="modal-submit" disabled="{{availabilitySaving}}" bindtap="saveAvailability">{{availabilitySaving ? '正在保存…' : '保存可用时间'}}</button></view>
     </view>
   </view>
 </view>

@@ -197,13 +197,55 @@ function cloudToggleVote(room, venueId) {
 
 function cloudSetVenues(room, venues, venueSource, routeMatrix) {
   if (!room.cloudId) return Promise.resolve(null)
-  return callRoomService('setVenues', { code: room.cloudId, memberRevision: room.memberRevision || 0, venues, venueSource, routeMatrix }).then((result) => {
+  return callRoomService('setVenues', { code: room.cloudId, memberRevision: room.memberRevision || 0,
+    meetingTime: room.meetingTime || '', venues, venueSource, routeMatrix }).then((result) => {
     const syncedRoom = Object.assign({}, result.room, {
       cloudId: result.code,
       currentMemberId: result.viewerMemberId || room.currentMemberId || '',
       currentUserIsOwner: Boolean(result.isOwner),
       claimableMemberIds: room.claimableMemberIds || [],
       signalId: result.signalId || room.signalId || ''
+    })
+    updateRoom(syncedRoom)
+    return syncedRoom
+  })
+}
+
+function updateMyAvailability(roomId, availability) {
+  const room = getRoom(roomId)
+  if (!room || !room.currentMemberId) return Promise.reject(new Error('请先加入聚会'))
+  if (!room.cloudId) {
+    room.members = room.members.map((item) => item.id === room.currentMemberId
+      ? Object.assign({}, item, { availability }) : item)
+    updateRoom(room)
+    return Promise.resolve(room)
+  }
+  return callRoomService('updateAvailability', { code: room.cloudId, availability }).then((result) => {
+    const syncedRoom = Object.assign({}, result.room, {
+      cloudId: result.code, currentMemberId: result.viewerMemberId,
+      currentUserIsOwner: Boolean(result.isOwner),
+      claimableMemberIds: room.claimableMemberIds || [], signalId: result.signalId || room.signalId || ''
+    })
+    updateRoom(syncedRoom)
+    return syncedRoom
+  })
+}
+
+function setMeetingTime(room, time) {
+  if (!room.cloudId) {
+    room.meetingSearchTime = room.meetingSearchTime || room.meetingTime || ''
+    room.meetingTime = time
+    room.dateText = room.meetingDate + ' ' + time
+    room.finalTimeAt = Date.now()
+    room.routeMatrix = {}
+    updateRoom(room)
+    return Promise.resolve(room)
+  }
+  return callRoomService('setMeetingTime', { code: room.cloudId, time }).then((result) => {
+    const syncedRoom = Object.assign({}, result.room, {
+      cloudId: result.code, currentMemberId: result.viewerMemberId,
+      currentUserIsOwner: Boolean(result.isOwner),
+      claimableMemberIds: room.claimableMemberIds || [], signalId: result.signalId || room.signalId || ''
     })
     updateRoom(syncedRoom)
     return syncedRoom
@@ -466,6 +508,8 @@ module.exports = {
   cloudIssueClaimCode,
   cloudToggleVote,
   cloudSetVenues,
+  updateMyAvailability,
+  setMeetingTime,
   setFinalVenue,
   cloudLeaveRoom,
   cloudDeleteRoom

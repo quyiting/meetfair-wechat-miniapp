@@ -54,7 +54,8 @@ const roomService = require('../cloudfunctions/roomService')
 Module._load = originalLoad
 
 const member = (id, name) => ({ id, name, latitude: 31, longitude: 121, transport: 'transit' })
-const room = { id: 'room-1', title: '聚会', category: 'food', members: [member('owner-seat', '你'), member('guest-seat', '小李')], venues: [
+const room = { id: 'room-1', title: '聚会', category: 'food', meetingDate: '2026-10-03', meetingTime: '18:30',
+  members: [member('owner-seat', '你'), member('guest-seat', '小李')], venues: [
   { id: 'venue-1', name: '餐厅', address: '测试地址', latitude: 31.1, longitude: 121.1 },
   { id: 'venue-2', name: '咖啡馆', address: '第二地址', latitude: 31.2, longitude: 121.2 }
 ] }
@@ -90,6 +91,8 @@ async function run() {
   assert.strictEqual(deniedEdit.ok, false)
   const deniedFinal = await roomService.main({ action: 'setFinalVenue', code, venueId: 'venue-1' })
   assert.strictEqual(deniedFinal.ok, false)
+  const deniedTime = await roomService.main({ action: 'setMeetingTime', code, time: '19:00' })
+  assert.strictEqual(deniedTime.ok, false)
 
   openid = 'owner'
   const ownerView = await roomService.main({ action: 'get', code })
@@ -101,6 +104,10 @@ async function run() {
   assert.strictEqual(final.room.finalVenue.id, 'venue-1')
   const changedFinal = await roomService.main({ action: 'setFinalVenue', code, venueId: 'venue-2' })
   assert.strictEqual(changedFinal.room.finalVenue.id, 'venue-2')
+  const finalTime = await roomService.main({ action: 'setMeetingTime', code, time: '19:00' })
+  assert.strictEqual(finalTime.ok, true)
+  assert.strictEqual(finalTime.room.meetingTime, '19:00')
+  assert.strictEqual(finalTime.room.meetingSearchTime, room.meetingTime || '')
   assert.strictEqual(ownerView.room.preview, undefined)
   const issued = await roomService.main({ action: 'issueClaimCode', code, memberId: 'guest-seat' })
   assert.match(issued.claimCode, /^[A-F0-9]{16}$/)
@@ -122,6 +129,14 @@ async function run() {
   assert.strictEqual(signals[joined.signalId].openid, 'invitee')
   const joinedView = await roomService.main({ action: 'get', code })
   assert.strictEqual(joinedView.room.members[0].longitude, 121)
+  const availability = await roomService.main({ action: 'updateAvailability', code,
+    availability: [{ start: '18:00', end: '21:00' }, { start: '22:00', end: '23:00' }] })
+  assert.strictEqual(availability.ok, true)
+  assert.deepStrictEqual(availability.room.members.find((item) => item.id === 'guest-seat').availability,
+    [{ start: '18:00', end: '21:00' }, { start: '22:00', end: '23:00' }])
+  const invalidAvailability = await roomService.main({ action: 'updateAvailability', code,
+    availability: [{ start: '21:00', end: '18:00' }] })
+  assert.strictEqual(invalidAvailability.ok, false)
   docs[0].room.routeMatrix = { 'venue-1': { 'guest-seat': { minutes: 20 } } }
   const edited = await roomService.main({ action: 'updateMember', code, member: Object.assign(member('owner-seat', '新名字'), {
     latitude: 32, longitude: 122, transport: 'walking', budget: 50

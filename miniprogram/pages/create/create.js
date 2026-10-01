@@ -179,6 +179,7 @@ Page({
         dateText: `${this.data.meetingDate} ${this.data.meetingTime}`,
         meetingDate: this.data.meetingDate,
         meetingTime: this.data.meetingTime,
+        meetingSearchTime: this.data.meetingTime,
         retentionHours: this.data.retentionOptions[this.data.retentionIndex].hours,
         expiresAt: Date.now() + this.data.retentionOptions[this.data.retentionIndex].hours * 3600000,
         members,

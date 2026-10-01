@@ -1,5 +1,6 @@
-const { getRoom, updateRoom, encodeRoom, addMemberToRoom, updateMyMember, cloudCreateRoom, cloudGetRoom, cloudErrorText, cloudIssueClaimCode, cloudToggleVote, cloudSetVenues, setFinalVenue, cloudLeaveRoom, cloudDeleteRoom } = require('../../utils/store')
+const { getRoom, updateRoom, encodeRoom, addMemberToRoom, updateMyMember, updateMyAvailability, setMeetingTime, cloudCreateRoom, cloudGetRoom, cloudErrorText, cloudIssueClaimCode, cloudToggleVote, cloudSetVenues, setFinalVenue, cloudLeaveRoom, cloudDeleteRoom } = require('../../utils/store')
 const { midpoint, candidateOrigins, routeCandidates, recommendVenues } = require('../../utils/recommend')
+const { recommendMeetingTimes } = require('../../utils/meeting-time')
 const { prepareMemberLocation } = require('../../utils/privacy')
 const { CATEGORY_LABELS, TRANSPORT_LABELS } = require('../../utils/constants')
 const { getNearbyVenues, getRouteMatrix } = require('../../utils/venue-service')
@@ -24,6 +25,13 @@ Page({
     recommendations: [],
     recommendationsStale: false,
     refreshingNearby: false,
+    timeSuggestions: [],
+    timeResponded: 0,
+    showAvailabilityModal: false,
+    availabilityDraft: [],
+    availabilityStart: '18:00',
+    availabilityEnd: '21:00',
+    availabilitySaving: false,
     activeCategory: 'all',
     activeGoal: 'max',
     goals: [
@@ -144,7 +152,7 @@ Page({
       this.setData({
         room: Object.assign({}, room, { categoryLabel: CATEGORY_LABELS[room.category] }),
         point: null, recommendations: [], selectedVenueId: '', markers: [],
-        recommendationsStale: false,
+        recommendationsStale: false, timeSuggestions: [], timeResponded: 0,
         isMember: false, claimableMembers: [], codePreview: room.cloudId,
         codeLabel: '聚会码 · 6 位'
       })
@@ -160,7 +168,14 @@ Page({
       ? this.data.selectedVenueId : (recommendations[0] && recommendations[0].id) || ''
     const markers = this.getMarkers(room, recommendations, selectedVenueId)
     const isMember = Boolean(room.currentMemberId && room.members.some((m) => m.id === room.currentMemberId))
-    const recommendationsStale = (room.memberRevision || 0) !== (room.venueMemberRevision || 0)
+    const recommendationsStale = (room.memberRevision || 0) !== (room.venueMemberRevision || 0) ||
+      Boolean(room.meetingSearchTime && room.meetingSearchTime !== room.meetingTime)
+    const timeResponded = room.members.filter((member) => Array.isArray(member.availability) && member.availability.length).length
+    const travelVenue = room.finalVenue
+      ? recommendVenues(room, 'all').find((venue) => venue.id === room.finalVenue.id) || recommendations[0]
+      : recommendations[0]
+    const timeSuggestions = recommendMeetingTimes(room.members, room.meetingDate, room.meetingTime,
+      travelVenue ? travelVenue.maxMinutes : 0)
     const claimableMembers = room.currentUserIsOwner
       ? room.members.filter((member) => (room.claimableMemberIds || []).indexOf(member.id) >= 0)
       : []
@@ -173,6 +188,8 @@ Page({
       point,
       recommendations,
       recommendationsStale,
+      timeSuggestions,
+      timeResponded,
       selectedVenueId,
       markers,
       isMember,
@@ -184,8 +201,9 @@ Page({
     // 如果没有地点数据，自动搜索
     if (!venues || !venues.length) {
       this.refreshNearby()
-    } else if (recommendationsStale && room.cloudId && room.currentUserIsOwner && !localOnly && this.autoRefreshRevision !== room.memberRevision) {
-      this.autoRefreshRevision = room.memberRevision
+    } else if (recommendationsStale && room.cloudId && room.currentUserIsOwner && !localOnly &&
+      this.autoRefreshRevision !== `${room.memberRevision}:${room.meetingTime}`) {
+      this.autoRefreshRevision = `${room.memberRevision}:${room.meetingTime}`
       this.refreshNearby()
     }
   },
@@ -237,7 +255,10 @@ Page({
       room.routeMatrix = {}
       return getRouteMatrix(room.members, routeCandidates(room), room.meetingDate, room.meetingTime).then((routeResult) => {
         room.routeMatrix = routeResult.routeMatrix || {}
-        if (!room.cloudId) room.venueMemberRevision = room.memberRevision || 0
+        if (!room.cloudId) {
+          room.venueMemberRevision = room.memberRevision || 0
+          room.meetingSearchTime = room.meetingTime || ''
+        }
         return room.cloudId
           ? cloudSetVenues(room, searchResult.venues, searchResult.source, room.routeMatrix)
           : Promise.resolve(updateRoom(room))
@@ -257,6 +278,66 @@ Page({
     const selectedVenueId = event.currentTarget.dataset.id
     const room = this.data.room
     this.setData({ selectedVenueId, markers: this.getMarkers(room, this.data.recommendations, selectedVenueId) })
+  },
+  openAvailabilityModal() {
+    const room = getRoom(this.roomId)
+    const member = room && room.members.find((item) => item.id === room.currentMemberId)
+    if (!member) return
+    this.setData({ showAvailabilityModal: true,
+      availabilityDraft: (member.availability || []).map((range) => Object.assign({}, range)) })
+  },
+  closeAvailabilityModal() {
+    this.setData({ showAvailabilityModal: false })
+  },
+  setAvailabilityStart(event) {
+    this.setData({ availabilityStart: event.detail.value })
+  },
+  setAvailabilityEnd(event) {
+    this.setData({ availabilityEnd: event.detail.value })
+  },
+  addAvailabilityRange() {
+    const draft = this.data.availabilityDraft
+    if (draft.length >= 5) return wx.showToast({ title: '最多填写 5 段时间', icon: 'none' })
+    const start = this.data.availabilityStart
+    const end = this.data.availabilityEnd
+    if (start >= end) return wx.showToast({ title: '结束时间需晚于开始时间', icon: 'none' })
+    if (draft.some((range) => range.start === start)) return wx.showToast({ title: '这个开始时间已填写', icon: 'none' })
+    this.setData({ availabilityDraft: draft.concat({ start, end }) })
+  },
+  removeAvailabilityRange(event) {
+    const index = Number(event.currentTarget.dataset.index)
+    this.setData({ availabilityDraft: this.data.availabilityDraft.filter((_, i) => i !== index) })
+  },
+  saveAvailability() {
+    if (this.data.availabilitySaving) return
+    this.setData({ availabilitySaving: true })
+    updateMyAvailability(this.roomId, this.data.availabilityDraft).then(() => {
+      this.setData({ availabilitySaving: false, showAvailabilityModal: false })
+      this.loadRoom(true)
+      wx.showToast({ title: '可用时间已保存', icon: 'success' })
+    }).catch((error) => {
+      this.setData({ availabilitySaving: false })
+      wx.showToast({ title: error.message || '保存失败', icon: 'none' })
+    })
+  },
+  confirmSuggestedTime(event) {
+    const room = getRoom(this.roomId)
+    const time = event.currentTarget.dataset.time
+    if (!room || !room.currentUserIsOwner || !this.data.timeSuggestions.some((item) => item.start === time)) return
+    wx.showModal({ title: '确定聚会时间', content: `确定 ${room.meetingDate} ${time} 见面吗？`,
+      success: (choice) => {
+        if (!choice.confirm) return
+        wx.showLoading({ title: '正在保存时间' })
+        setMeetingTime(room, time).then(() => {
+          wx.hideLoading()
+          this.loadRoom(true).then(() => this.refreshNearby())
+          wx.showToast({ title: '时间已确定', icon: 'success' })
+        }).catch((error) => {
+          wx.hideLoading()
+          wx.showToast({ title: error.message || '保存失败', icon: 'none' })
+        })
+      }
+    })
   },
   confirmSelectedVenue() {
     const room = getRoom(this.roomId)
@@ -523,7 +604,7 @@ Page({
     const room = this.data.room || {}
     const sharePath = room.cloudId ? `/pages/room/room?id=${room.cloudId}` : `/pages/room/room?id=${this.roomId}`
     return {
-      title: room.finalVenue ? `${room.title || '聚会'} · 已确定在${room.finalVenue.name}见面` : `${room.title || '聚会'} · 一起找个公平的碰头地点`,
+      title: room.finalVenue ? `${room.title || '聚会'} · ${room.dateText} 在${room.finalVenue.name}见面` : `${room.title || '聚会'} · 一起找个公平的碰头地点`,
       path: sharePath,
       imageUrl: ''
     }

@@ -33,6 +33,17 @@ function generateMemberId() {
   return 'member-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8)
 }
 
+function normalizeAvailability(value) {
+  if (!Array.isArray(value) || value.length > 5) throw new Error('可用时间最多填写 5 段')
+  return value.map((range) => {
+    const start = String(range && range.start || '')
+    const end = String(range && range.end || '')
+    const valid = (time) => /^([01]\d|2[0-3]):[0-5]\d$/.test(time)
+    if (!valid(start) || !valid(end) || start >= end) throw new Error('可用时间格式不正确')
+    return { start, end }
+  })
+}
+
 function normalizeMember(member, id) {
   if (!member || typeof member !== 'object') throw new Error('成员数据不合法')
   const name = String(member.name || '').trim().slice(0, 8)
@@ -54,7 +65,8 @@ function normalizeMember(member, id) {
     locationName: approximate ? '大致位置（约 1 公里精度）' : String(member.locationName || '').slice(0, 120),
     approximate,
     transport: transports.indexOf(member.transport) >= 0 ? member.transport : 'transit',
-    budget: Math.max(0, Math.min(255, Number(member.budget) || 0))
+    budget: Math.max(0, Math.min(255, Number(member.budget) || 0)),
+    availability: normalizeAvailability(member.availability || [])
   }
 }
 
@@ -129,6 +141,7 @@ async function createRoom(room, openid) {
       dateText: String(room.dateText || '').slice(0, 40),
       meetingDate: String(room.meetingDate || '').slice(0, 10),
       meetingTime: String(room.meetingTime || '').slice(0, 5),
+      meetingSearchTime: String(room.meetingTime || '').slice(0, 5),
       retentionHours,
       expiresAt,
       cloudId: code,
@@ -292,7 +305,9 @@ exports.main = async (event) => {
         if (!memberId) throw new Error('请先加入聚会')
         const previous = current.room.members.find((item) => item.id === memberId)
         if (!previous) throw new Error('成员不存在')
-        const member = normalizeMember(Object.assign({}, event.member, { color: previous.color }), memberId)
+        const member = normalizeMember(Object.assign({}, event.member, {
+          color: previous.color, availability: previous.availability || []
+        }), memberId)
         const room = Object.assign({}, current.room, {
           memberRevision: (current.room.memberRevision || 0) + 1,
           members: current.room.members.map((item) => item.id === memberId ? member : item),
@@ -303,6 +318,52 @@ exports.main = async (event) => {
       }, 3)
       await publishSignals(result.doc.signals)
       return { ok: true, code, room: result.room, viewerMemberId: result.memberId, isOwner: result.doc.owner === OPENID,
+        signalId: (result.doc.signals || {})[OPENID] || '' }
+    }
+
+    if (action === 'updateAvailability') {
+      const code = String(event.code || '').toUpperCase()
+      const doc = CODE_PATTERN.test(code) ? await findRoom(code) : null
+      if (!doc) return { ok: false, message: '聚会不存在' }
+      const availability = normalizeAvailability(event.availability)
+      const result = await db.runTransaction(async (transaction) => {
+        const current = (await transaction.collection(COLLECTION).doc(doc._id).get()).data
+        if (!current || current.expiresAt < Date.now()) throw new Error('聚会已过期')
+        const memberId = getViewerMemberId(current, OPENID)
+        if (!memberId) throw new Error('请先加入聚会')
+        const room = Object.assign({}, current.room, {
+          members: current.room.members.map((item) => item.id === memberId
+            ? Object.assign({}, item, { availability }) : item)
+        })
+        await transaction.collection(COLLECTION).doc(doc._id).update({ data: { room, updatedAt: Date.now() } })
+        return { room, memberId, doc: current }
+      }, 3)
+      await publishSignals(result.doc.signals)
+      return { ok: true, code, room: result.room, viewerMemberId: result.memberId, isOwner: result.doc.owner === OPENID,
+        signalId: (result.doc.signals || {})[OPENID] || '' }
+    }
+
+    if (action === 'setMeetingTime') {
+      const code = String(event.code || '').toUpperCase()
+      const time = String(event.time || '')
+      const doc = CODE_PATTERN.test(code) ? await findRoom(code) : null
+      if (!doc) return { ok: false, message: '聚会不存在' }
+      if (doc.owner !== OPENID) return { ok: false, message: '只有创建者可以确定时间' }
+      if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) return { ok: false, message: '聚会时间不合法' }
+      const result = await db.runTransaction(async (transaction) => {
+        const current = (await transaction.collection(COLLECTION).doc(doc._id).get()).data
+        if (!current || current.expiresAt < Date.now()) throw new Error('聚会已过期')
+        if (current.owner !== OPENID) throw new Error('只有创建者可以确定时间')
+        const room = Object.assign({}, current.room, {
+          meetingTime: time, dateText: current.room.meetingDate + ' ' + time,
+          meetingSearchTime: current.room.meetingSearchTime || current.room.meetingTime || '',
+          finalTimeAt: Date.now(), routeMatrix: {}
+        })
+        await transaction.collection(COLLECTION).doc(doc._id).update({ data: { room, updatedAt: Date.now() } })
+        return { room, doc: current }
+      }, 3)
+      await publishSignals(result.doc.signals)
+      return { ok: true, code, room: result.room, viewerMemberId: getViewerMemberId(result.doc, OPENID), isOwner: true,
         signalId: (result.doc.signals || {})[OPENID] || '' }
     }
 
@@ -344,12 +405,14 @@ exports.main = async (event) => {
         const memberId = getViewerMemberId(current, OPENID)
         if (!memberId) throw new Error('请先加入聚会')
         if (event.memberRevision !== (current.room.memberRevision || 0)) throw new Error('成员已变化，请重新搜索地点')
+        if (current.room.meetingTime && event.meetingTime !== current.room.meetingTime) throw new Error('聚会时间已变化，请重新搜索地点')
         const room = Object.assign({}, current.room, {
           cloudId: code,
           venues: event.venues,
           venueSource: event.venueSource || null,
           routeMatrix: event.routeMatrix && typeof event.routeMatrix === 'object' ? event.routeMatrix : {},
           venueMemberRevision: current.room.memberRevision || 0,
+          meetingSearchTime: current.room.meetingTime || '',
           venueSearchAt: Date.now()
         })
         await transaction.collection(COLLECTION).doc(doc._id).update({ data: { room, updatedAt: Date.now() } })
